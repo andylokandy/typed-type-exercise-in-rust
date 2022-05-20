@@ -4,13 +4,13 @@ Build database expression type checker and vectorized runtime executor in type-s
 
 > This project is highly inspired by [@skyzh](https://github.com/skyzh)'s [type-exercise-in-rust](https://github.com/skyzh/type-exercise-in-rust). While adopting his idea in [Databend](https://github.com/datafuselabs/databend), I also implemented a few features that I think are useful:
 
-1. **Type checking**. The type checker can catch all type errors in the SQL compilation phase with a set of carefully defined typing rules. The type checker outputs a totally untyped expression that is ready for runtime execution. This makes the runtime free of type errors.
+1. **Type checking**. The type checker can catch all type errors in the SQL compilation phase with a set of carefully defined typing rules. The type checker outputs a totally untyped expression that is ready for runtime execution. So this makes the runtime free of any type information.
 
-2. **Type-safe downcast**. Function authors not longer worries about downcasting runtime inputs. Thanks to Rust's type system, so long as your function compiles, the downcast always succeeds.
+2. **Type-safe downcast**. Function authors no longer have to worry about downcasting runtime inputs. Thanks to Rust's type system, so long as your function compiles, the downcast is always successful.
 
 3. **All-in-one generic trait**. We've only one trait `Type`. All other traits like `Array`, `ArrayBuilder`, `ArrayRef` and their sophisticated trait bound are all wiped out.
 
-4. **Enum-dispatched columns**. Use enum to exhaustive all column types and scalar types. They should further minize runtime overhead and mental effort, comparing to `dyn`-dispatched strategy.
+4. **Enum-dispatched columns**. Use enum to exhaustive all column types and scalar types. They should further minimize runtime overhead and mental effort, compared to `dyn`-dispatched strategy.
 
 ## Snippet of code
 
