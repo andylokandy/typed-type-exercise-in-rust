@@ -2,6 +2,7 @@ use crate::{
     expr::{Cast, Expr, Literal, AST},
     function::FunctionRegistry,
     types::DataType,
+    values::{Array, Scalar},
 };
 
 pub fn check(ast: &AST, fn_registry: &FunctionRegistry) -> Option<(Expr, DataType)> {
@@ -24,16 +25,35 @@ pub fn check(ast: &AST, fn_registry: &FunctionRegistry) -> Option<(Expr, DataTyp
     }
 }
 
-pub fn check_literal(literal: &Literal<AST>) -> (Literal<Expr>, DataType) {
+pub fn check_literal(literal: &Literal) -> (Scalar, DataType) {
     match literal {
         Literal::Null => (Literal::Null, DataType::Nullable(Box::new(DataType::Hole))),
-        Literal::Int8(val) => (Literal::Int8(*val), DataType::Int8),
-        Literal::Int16(val) => (Literal::Int16(*val), DataType::Int16),
-        Literal::UInt8(val) => (Literal::UInt8(*val), DataType::UInt8),
-        Literal::UInt16(val) => (Literal::UInt16(*val), DataType::UInt16),
-        Literal::Boolean(val) => (Literal::Boolean(*val), DataType::Boolean),
-        Literal::Array(_items) => todo!(),
-        Literal::String(val) => (Literal::String(val.clone()), DataType::String),
+        Literal::Int8(val) => (Scalar::Int8(*val), DataType::Int8),
+        Literal::Int16(val) => (Scalar::Int16(*val), DataType::Int16),
+        Literal::UInt8(val) => (Scalar::UInt8(*val), DataType::UInt8),
+        Literal::UInt16(val) => (Scalar::UInt16(*val), DataType::UInt16),
+        Literal::Boolean(val) => (Scalar::Boolean(*val), DataType::Boolean),
+        Literal::String(val) => (Scalar::String(val.clone()), DataType::String),
+        Literal::Array(items) => {
+            if items.is_empty() {
+                (
+                    Scalar::Array(Array::Empty),
+                    DataType::Array(Box::new(DataType::Hole)),
+                )
+            } else {
+                
+            }
+        }
+    }
+}
+
+pub fn subtype(src: &DataType, dest: &DataType) -> bool {
+    match (src, dest) {
+        (src, dest) if src == dest => true,
+        (_, DataType::Any) => true,
+        (DataType::Hole, _) => true,
+        (DataType::Nullable(src), DataType::Nullable(dest)) => subtype(src, dest),
+        _ => false,
     }
 }
 
@@ -95,20 +115,15 @@ pub fn try_coerce(src_ty: &DataType, dest_ty: &DataType) -> Option<Vec<Cast>> {
             casts.push(Cast::ToNullable);
             Some(casts)
         }
+        (DataType::Array(DataType::Hole), DataType::Array(DataType::Any)) => {
+            Some(vec![Cast::EmptyArrayToAnyArray])
+        }
+        (DataType::Array(DataType::Hole), DataType::Array(item_type)) => {
+            Some(vec![Cast::EmptyArrayToUniformArray { item_type }])
+        }
         (DataType::UInt8, DataType::UInt16) => Some(vec![Cast::UInt8ToUInt16]),
         (DataType::Int8, DataType::Int16) => Some(vec![Cast::Int8ToInt16]),
         (DataType::UInt8, DataType::Int16) => Some(vec![Cast::UInt8ToInt16]),
         _ => None,
-    }
-}
-
-pub fn subtype(src: &DataType, dest: &DataType) -> bool {
-    match (src, dest) {
-        (src, dest) if src == dest => true,
-        (_, DataType::Any) => true,
-        (DataType::Hole, _) => true,
-        (DataType::Array(src), DataType::Array(dest)) => subtype(src, dest),
-        (DataType::Nullable(src), DataType::Nullable(dest)) => subtype(src, dest),
-        _ => false,
     }
 }

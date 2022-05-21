@@ -2,7 +2,7 @@
 
 Build database expression type checker and vectorized runtime executor in type-safe Rust.
 
-> This project is highly inspired by [@skyzh](https://github.com/skyzh)'s [type-exercise-in-rust](https://github.com/skyzh/type-exercise-in-rust). While adopting his idea in [Databend](https://github.com/datafuselabs/databend), I also implemented a few features that I think are useful:
+This project is highly inspired by [@skyzh](https://github.com/skyzh)'s [type-exercise-in-rust](https://github.com/skyzh/type-exercise-in-rust). While adopting his idea in [Databend](https://github.com/datafuselabs/databend), I also implemented a few features that I think are useful:
 
 1. **Type checking**. The type checker can catch all type errors in the SQL compilation phase with a set of carefully defined typing rules. The type checker outputs a totally untyped expression that is ready for runtime execution. So this makes the runtime free of any type information.
 
@@ -30,8 +30,8 @@ cargo run
 
 ## Things to do
 
-- [ ] Check ambiguity between function overloads.
-- [ ] Read material for the project.
+- [ ] Check ambiguity between function overloads
+- [ ] Read material for the project
 
 ## Reading material
 

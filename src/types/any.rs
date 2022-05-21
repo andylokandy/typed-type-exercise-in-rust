@@ -58,10 +58,10 @@ impl Type for AnyType {
     }
 
     fn empty_column(_capacity: usize) -> Self::Column {
-        unreachable!()
+        unimplemented!()
     }
 
     fn push_column(_col: Self::Column, _item: Self::Scalar) -> Self::Column {
-        unreachable!()
+        unimplemented!()
     }
 }

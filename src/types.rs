@@ -16,14 +16,14 @@ use crate::values::{Column, Scalar};
 pub enum DataType {
     Any,
     Hole,
-    Nullable(Box<DataType>),
-    Array(Box<DataType>),
-    Boolean,
-    String,
-    UInt8,
-    UInt16,
     Int8,
     Int16,
+    UInt8,
+    UInt16,
+    Boolean,
+    String,
+    Array(Box<DataType>),
+    Nullable(Box<DataType>),
 }
 
 pub trait Type: 'static {
