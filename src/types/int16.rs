@@ -71,4 +71,8 @@ impl Type for Int16Type {
         col.push(item);
         col
     }
+
+    fn column_from_iter(iter: impl Iterator<Item = Self::Scalar>) -> Self::Column {
+        iter.collect()
+    }
 }

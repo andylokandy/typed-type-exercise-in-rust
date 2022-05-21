@@ -118,24 +118,20 @@ pub fn vectorize_binary<'a, I1: Type, I2: Type, O: Type>(
     match (lhs, rhs) {
         (ValueRef::Scalar(lhs), ValueRef::Scalar(rhs)) => Value::Scalar(func(lhs, rhs)),
         (ValueRef::Scalar(lhs), ValueRef::Column(rhs)) => {
-            let mut col = O::empty_column(0);
-            for rhs in I2::iter_column(rhs) {
-                col = O::push_column(col, func(lhs.clone(), rhs));
-            }
+            let iter = I2::iter_column(rhs).map(|rhs| func(lhs.clone(), rhs));
+            let col = O::column_from_iter(iter);
             Value::Column(col)
         }
         (ValueRef::Column(lhs), ValueRef::Scalar(rhs)) => {
-            let mut col = O::empty_column(0);
-            for lhs in I1::iter_column(lhs) {
-                col = O::push_column(col, func(lhs, rhs.clone()));
-            }
+            let iter = I1::iter_column(lhs).map(|lhs| func(lhs, rhs.clone()));
+            let col = O::column_from_iter(iter);
             Value::Column(col)
         }
         (ValueRef::Column(lhs), ValueRef::Column(rhs)) => {
-            let mut col = O::empty_column(0);
-            for (lhs, rhs) in I1::iter_column(lhs).zip(I2::iter_column(rhs)) {
-                col = O::push_column(col, func(lhs, rhs));
-            }
+            let iter = I1::iter_column(lhs)
+                .zip(I2::iter_column(rhs))
+                .map(|(lhs, rhs)| func(lhs, rhs));
+            let col = O::column_from_iter(iter);
             Value::Column(col)
         }
     }
@@ -152,24 +148,21 @@ pub fn vectorize_binary_passthrough_nullable<'a, I1: Type, I2: Type, O: Type>(
             Value::Scalar(Some(func(lhs, rhs)))
         }
         (ValueRef::Scalar(Some(lhs)), ValueRef::Column((rhs, rhs_nulls))) => {
-            let mut col = O::empty_column(0);
-            for rhs in I2::iter_column(rhs) {
-                col = O::push_column(col, func(lhs.clone(), rhs));
-            }
+            let iter = I2::iter_column(rhs).map(|rhs| func(lhs.clone(), rhs));
+            let col = O::column_from_iter(iter);
             Value::Column((col, rhs_nulls.to_vec()))
         }
         (ValueRef::Column((lhs, lhs_nulls)), ValueRef::Scalar(Some(rhs))) => {
-            let mut col = O::empty_column(0);
-            for lhs in I1::iter_column(lhs) {
-                col = O::push_column(col, func(lhs, rhs.clone()));
-            }
+            let iter = I1::iter_column(lhs).map(|lhs| func(lhs, rhs.clone()));
+            let col = O::column_from_iter(iter);
             Value::Column((col, lhs_nulls.to_vec()))
         }
         (ValueRef::Column((lhs, lhs_nulls)), ValueRef::Column((rhs, rhs_nulls))) => {
-            let mut col = O::empty_column(0);
-            for (lhs, rhs) in I1::iter_column(lhs).zip(I2::iter_column(rhs)) {
-                col = O::push_column(col, func(lhs, rhs));
-            }
+            let iter = I1::iter_column(lhs)
+                .zip(I2::iter_column(rhs))
+                .map(|(lhs, rhs)| func(lhs, rhs));
+            let col = O::column_from_iter(iter);
+
             let nulls = lhs_nulls
                 .iter()
                 .zip(rhs_nulls)
