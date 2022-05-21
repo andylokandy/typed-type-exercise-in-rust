@@ -46,4 +46,12 @@ pub trait Type: 'static {
     fn iter_column<'a>(col: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a>;
     fn empty_column(capacity: usize) -> Self::Column;
     fn push_column(col: Self::Column, item: Self::Scalar) -> Self::Column;
+
+    fn column_from_iter(iter: impl Iterator<Item = Self::Scalar>) -> Self::Column {
+        let mut col = Self::empty_column(iter.size_hint().0);
+        for item in iter {
+            col = Self::push_column(col, item);
+        }
+        col
+    }
 }
