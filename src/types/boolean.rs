@@ -2,12 +2,11 @@ use std::sync::Arc;
 
 use crate::values::{Column, Scalar};
 
-use super::{DataType, NullableType, Type};
+use super::{DataType, Type};
 
 pub struct BooleanType;
 
 impl Type for BooleanType {
-    type WrapNullable = NullableType<Self>;
     type Scalar = bool;
     type ScalarRef<'a> = &'a bool;
     type Column = Vec<bool>;

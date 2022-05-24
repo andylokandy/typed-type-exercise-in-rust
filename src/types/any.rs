@@ -2,12 +2,11 @@ use std::sync::Arc;
 
 use crate::values::{Column, ColumnIter, Scalar};
 
-use super::{DataType, NullableType, Type};
+use super::{DataType, Type};
 
 pub struct AnyType;
 
 impl Type for AnyType {
-    type WrapNullable = NullableType<Self>;
     type Scalar = Scalar;
     type ScalarRef<'a> = Scalar;
     type Column = Arc<Column>;

@@ -27,7 +27,6 @@ pub enum DataType {
 }
 
 pub trait Type: 'static {
-    type WrapNullable: Type;
     type Scalar: Debug + Default;
     type ScalarRef<'a>: Debug + Clone;
     type Column: Debug;

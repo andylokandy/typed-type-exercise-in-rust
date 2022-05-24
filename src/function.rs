@@ -46,8 +46,30 @@ impl FunctionRegistry {
         let fns = func.into_iter().map(Arc::new).collect();
         FunctionRegistry(fns)
     }
-
+    
     pub fn register_1_arg<I1: Type, O: Type, F>(&mut self, name: &'static str, func: F)
+    where
+        F: Fn(ValueRef<I1>) -> Value<O> + 'static + Clone,
+    {   
+        self.register_1_arg_core(name, func.clone());
+        
+        let has_nullable = &[I1::data_type(), O::data_type()].iter().any(|t| match t {
+            DataType::Nullable(_) => true,
+            _ => false,
+        });
+        
+        assert!(!has_nullable, "Function {} has nullable argument or output, please use register_1_arg_core instead", name);
+        self.0.push(Arc::new(Function {
+            signature: FunctionSignature {
+                name,
+                args_type: vec![<NullableType<I1>>::data_type()],
+                return_type: <NullableType<O>>::data_type(),
+            },
+            eval: Box::new(erase_function_generic_1_nullable(func)),
+        }));
+    }
+
+    pub fn register_1_arg_core<I1: Type, O: Type, F>(&mut self, name: &'static str, func: F)
     where
         F: Fn(ValueRef<I1>) -> Value<O> + 'static + Clone,
     {
@@ -59,25 +81,38 @@ impl FunctionRegistry {
             },
             eval: Box::new(erase_function_generic_1(func.clone())),
         }));
-
-        let has_nullable = &[I1::data_type(), O::data_type()].iter().any(|t| match t {
-            DataType::Nullable(_) => true,
-            _ => false,
-        });
-
-        if !has_nullable {
-            self.0.push(Arc::new(Function {
-                signature: FunctionSignature {
-                    name,
-                    args_type: vec![<NullableType<I1>>::data_type()],
-                    return_type: <NullableType<O>>::data_type(),
-                },
-                eval: Box::new(erase_function_generic_1_nullable(func)),
-            }));
-        }
     }
 
     pub fn register_2_arg<I1: Type, I2: Type, O: Type, F>(&mut self, name: &'static str, func: F)
+    where
+        F: for<'a> Fn(ValueRef<'a, I1>, ValueRef<'a, I2>) -> Value<O> + Sized + 'static + Clone,
+    {
+        self.register_2_arg_core(name, func.clone());
+
+        let has_nullable = &[I1::data_type(), I2::data_type(), O::data_type()]
+            .iter()
+            .any(|t| match t {
+                DataType::Nullable(_) => true,
+                _ => false,
+            });
+        
+        assert!(!has_nullable, "Function {} has nullable argument or output, please use register_2_arg_core instead", name);
+        
+        self.0.push(Arc::new(Function {
+            signature: FunctionSignature {
+                name,
+                args_type: vec![
+                    <NullableType<I1>>::data_type(),
+                    <NullableType<I2>>::data_type(),
+                ],
+                return_type: <NullableType<O>>::data_type(),
+            },
+            eval: Box::new(erase_function_generic_2_nullable(func)),
+        }));
+    }
+
+
+    pub fn register_2_arg_core<I1: Type, I2: Type, O: Type, F>(&mut self, name: &'static str, func: F)
     where
         F: for<'a> Fn(ValueRef<'a, I1>, ValueRef<'a, I2>) -> Value<O> + Sized + 'static + Clone,
     {
@@ -89,29 +124,8 @@ impl FunctionRegistry {
             },
             eval: Box::new(erase_function_generic_2(func.clone())),
         }));
-
-        let has_nullable = &[I1::data_type(), I2::data_type(), O::data_type()]
-            .iter()
-            .any(|t| match t {
-                DataType::Nullable(_) => true,
-                _ => false,
-            });
-
-        if !has_nullable {
-            self.0.push(Arc::new(Function {
-                signature: FunctionSignature {
-                    name,
-                    args_type: vec![
-                        <NullableType<I1>>::data_type(),
-                        <NullableType<I2>>::data_type(),
-                    ],
-                    return_type: <NullableType<O>>::data_type(),
-                },
-                eval: Box::new(erase_function_generic_2_nullable(func)),
-            }));
-        }
     }
-
+    
     pub fn search(&self, name: &str, args_len: usize) -> Vec<Arc<Function>> {
         self.0
             .iter()

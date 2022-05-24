@@ -7,7 +7,6 @@ use super::{DataType, Type};
 pub struct NullableType<T: Type>(PhantomData<T>);
 
 impl<T: Type> Type for NullableType<T> {
-    type WrapNullable = Self;
     type Scalar = Option<T::Scalar>;
     type ScalarRef<'a> = Option<T::ScalarRef<'a>>;
     type Column = (T::Column, Vec<bool>);
