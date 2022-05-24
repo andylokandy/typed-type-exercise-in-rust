@@ -4,11 +4,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use function::vectorize_unary;
 use types::Int16Type;
 
 use crate::expr::{Literal, AST};
-use crate::function::{vectorize_binary, FunctionRegistry};
+use crate::function::FunctionRegistry;
 use crate::runtime::Runtime;
 use crate::types::boolean::BooleanType;
 use crate::types::DataType;
@@ -17,7 +16,6 @@ use crate::values::Column;
 pub mod display;
 pub mod expr;
 pub mod function;
-pub mod function_nullable;
 pub mod runtime;
 pub mod type_check;
 pub mod types;
@@ -114,17 +112,10 @@ fn main() {
 fn builtin_functions() -> FunctionRegistry {
     let mut registry = FunctionRegistry::default();
 
-    registry.register_2_arg::<BooleanType, BooleanType, BooleanType, _>("and", |lhs, rhs| {
-        vectorize_binary(lhs, rhs, |lhs: &bool, rhs: &bool| *lhs && *rhs)
-    });
-
-    registry.register_2_arg::<Int16Type, Int16Type, Int16Type, _>("plus", |lhs, rhs| {
-        vectorize_binary(lhs, rhs, |lhs: &i16, rhs: &i16| *lhs + *rhs)
-    });
-
-    registry.register_1_arg::<BooleanType, BooleanType, _>("not", |lhs| {
-        vectorize_unary(lhs, |lhs: &bool| !*lhs)
-    });
+    registry
+        .register_2_arg::<BooleanType, BooleanType, BooleanType, _>("and", |lhs, rhs| *lhs && *rhs);
+    registry.register_2_arg::<Int16Type, Int16Type, Int16Type, _>("plus", |lhs, rhs| *lhs + *rhs);
+    registry.register_1_arg::<BooleanType, BooleanType, _>("not", |lhs| !*lhs);
 
     registry
 }

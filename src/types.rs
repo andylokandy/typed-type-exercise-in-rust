@@ -5,6 +5,7 @@ pub mod nullable;
 
 pub use any::AnyType;
 pub use boolean::BooleanType;
+use enum_as_inner::EnumAsInner;
 pub use int16::Int16Type;
 pub use nullable::NullableType;
 
@@ -12,7 +13,7 @@ use std::{fmt::Debug, sync::Arc};
 
 use crate::values::{Column, Scalar};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumAsInner)]
 pub enum DataType {
     Any,
     Hole,
