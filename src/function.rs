@@ -3,6 +3,7 @@ use std::sync::Arc;
 use educe::Educe;
 
 use crate::{
+    function_nullable::{erase_function_generic_1_nullable, erase_function_generic_2_nullable},
     runtime::{Value, ValueRef},
     types::*,
 };
@@ -35,28 +36,80 @@ impl Function {
             eval: Box::new(erase_function_generic_1(func)),
         }
     }
-
-    pub fn new_2_arg<I1: Type, I2: Type, O: Type, F>(name: &'static str, func: F) -> Function
-    where
-        F: for<'a> Fn(ValueRef<'a, I1>, ValueRef<'a, I2>) -> Value<O> + Sized + 'static,
-    {
-        Function {
-            signature: FunctionSignature {
-                name,
-                args_type: vec![I1::data_type(), I2::data_type()],
-                return_type: O::data_type(),
-            },
-            eval: Box::new(erase_function_generic_2(func)),
-        }
-    }
 }
 
+#[derive(Default)]
 pub struct FunctionRegistry(Vec<Arc<Function>>);
 
 impl FunctionRegistry {
     pub fn with_builtins(func: Vec<Function>) -> FunctionRegistry {
         let fns = func.into_iter().map(Arc::new).collect();
         FunctionRegistry(fns)
+    }
+
+    pub fn register_1_arg<I1: Type, O: Type, F>(&mut self, name: &'static str, func: F)
+    where
+        F: Fn(ValueRef<I1>) -> Value<O> + 'static + Clone,
+    {
+        self.0.push(Arc::new(Function {
+            signature: FunctionSignature {
+                name,
+                args_type: vec![I1::data_type()],
+                return_type: O::data_type(),
+            },
+            eval: Box::new(erase_function_generic_1(func.clone())),
+        }));
+
+        let has_nullable = &[I1::data_type(), O::data_type()].iter().any(|t| match t {
+            DataType::Nullable(_) => true,
+            _ => false,
+        });
+
+        if !has_nullable {
+            self.0.push(Arc::new(Function {
+                signature: FunctionSignature {
+                    name,
+                    args_type: vec![<NullableType<I1>>::data_type()],
+                    return_type: <NullableType<O>>::data_type(),
+                },
+                eval: Box::new(erase_function_generic_1_nullable(func)),
+            }));
+        }
+    }
+
+    pub fn register_2_arg<I1: Type, I2: Type, O: Type, F>(&mut self, name: &'static str, func: F)
+    where
+        F: for<'a> Fn(ValueRef<'a, I1>, ValueRef<'a, I2>) -> Value<O> + Sized + 'static + Clone,
+    {
+        self.0.push(Arc::new(Function {
+            signature: FunctionSignature {
+                name,
+                args_type: vec![I1::data_type(), I2::data_type()],
+                return_type: O::data_type(),
+            },
+            eval: Box::new(erase_function_generic_2(func.clone())),
+        }));
+
+        let has_nullable = &[I1::data_type(), I2::data_type(), O::data_type()]
+            .iter()
+            .any(|t| match t {
+                DataType::Nullable(_) => true,
+                _ => false,
+            });
+
+        if !has_nullable {
+            self.0.push(Arc::new(Function {
+                signature: FunctionSignature {
+                    name,
+                    args_type: vec![
+                        <NullableType<I1>>::data_type(),
+                        <NullableType<I2>>::data_type(),
+                    ],
+                    return_type: <NullableType<O>>::data_type(),
+                },
+                eval: Box::new(erase_function_generic_2_nullable(func)),
+            }));
+        }
     }
 
     pub fn search(&self, name: &str, args_len: usize) -> Vec<Arc<Function>> {
@@ -110,6 +163,21 @@ fn erase_function_generic_2<I1: Type, I2: Type, O: Type>(
     }
 }
 
+pub fn vectorize_unary<'a, I1: Type, O: Type>(
+    lhs: ValueRef<'a, I1>,
+    func: impl Fn(I1::ScalarRef<'a>) -> O::Scalar,
+) -> Value<O> {
+    match lhs {
+        ValueRef::Scalar(lhs) => Value::Scalar(func(lhs)),
+
+        ValueRef::Column(lhs) => {
+            let iter = I1::iter_column(lhs).map(|lhs| func(lhs));
+            let col = O::column_from_iter(iter);
+            Value::Column(col)
+        }
+    }
+}
+
 pub fn vectorize_binary<'a, I1: Type, I2: Type, O: Type>(
     lhs: ValueRef<'a, I1>,
     rhs: ValueRef<'a, I2>,
@@ -133,42 +201,6 @@ pub fn vectorize_binary<'a, I1: Type, I2: Type, O: Type>(
                 .map(|(lhs, rhs)| func(lhs, rhs));
             let col = O::column_from_iter(iter);
             Value::Column(col)
-        }
-    }
-}
-
-pub fn vectorize_binary_passthrough_nullable<'a, I1: Type, I2: Type, O: Type>(
-    lhs: ValueRef<'a, NullableType<I1>>,
-    rhs: ValueRef<'a, NullableType<I2>>,
-    func: impl Fn(I1::ScalarRef<'a>, I2::ScalarRef<'a>) -> O::Scalar,
-) -> Value<NullableType<O>> {
-    match (lhs, rhs) {
-        (ValueRef::Scalar(None), _) | (_, ValueRef::Scalar(None)) => Value::Scalar(None),
-        (ValueRef::Scalar(Some(lhs)), ValueRef::Scalar(Some(rhs))) => {
-            Value::Scalar(Some(func(lhs, rhs)))
-        }
-        (ValueRef::Scalar(Some(lhs)), ValueRef::Column((rhs, rhs_nulls))) => {
-            let iter = I2::iter_column(rhs).map(|rhs| func(lhs.clone(), rhs));
-            let col = O::column_from_iter(iter);
-            Value::Column((col, rhs_nulls.to_vec()))
-        }
-        (ValueRef::Column((lhs, lhs_nulls)), ValueRef::Scalar(Some(rhs))) => {
-            let iter = I1::iter_column(lhs).map(|lhs| func(lhs, rhs.clone()));
-            let col = O::column_from_iter(iter);
-            Value::Column((col, lhs_nulls.to_vec()))
-        }
-        (ValueRef::Column((lhs, lhs_nulls)), ValueRef::Column((rhs, rhs_nulls))) => {
-            let iter = I1::iter_column(lhs)
-                .zip(I2::iter_column(rhs))
-                .map(|(lhs, rhs)| func(lhs, rhs));
-            let col = O::column_from_iter(iter);
-
-            let nulls = lhs_nulls
-                .iter()
-                .zip(rhs_nulls)
-                .map(|(lhs, rhs)| *lhs || *rhs)
-                .collect();
-            Value::Column((col, nulls))
         }
     }
 }

@@ -2,11 +2,12 @@ use std::sync::Arc;
 
 use crate::values::{Column, Scalar};
 
-use super::{DataType, Type};
+use super::{DataType, NullableType, Type};
 
 pub struct Int16Type;
 
 impl Type for Int16Type {
+    type WrapNullable = NullableType<Self>;
     type Scalar = i16;
     type ScalarRef<'a> = &'a i16;
     type Column = Vec<i16>;

@@ -96,3 +96,19 @@ impl Iterator for ColumnIter {
         }
     }
 }
+
+pub fn combine_nulls(nulls: &[&[bool]]) -> Vec<bool> {
+    let nulls: Vec<&[bool]> = nulls.iter().filter(|n| !n.is_empty()).cloned().collect();
+    if nulls.is_empty() {
+        return vec![];
+    }
+
+    let mut res = nulls[0].to_vec();
+    for nulls in &nulls[1..] {
+        for (r, n) in res.iter_mut().zip(nulls.iter()) {
+            *r |= *n;
+        }
+    }
+
+    res
+}
