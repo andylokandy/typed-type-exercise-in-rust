@@ -30,6 +30,10 @@ cargo run
 
 ## Things to do
 
+- [ ] Automatcially generate the nullable function.
+- [ ] Implement arrays.
+- [ ] Implement unlimited-length tuples.
+- [ ] Implment generic functions.
 - [ ] Check ambiguity between function overloads.
 - [ ] Read material for the project.
 
@@ -38,3 +42,5 @@ cargo run
 - [Databend/RFC: Formal Type System](https://github.com/datafuselabs/databend/discussions/5438)
 - [type-exercise-in-rust](https://github.com/skyzh/type-exercise-in-rust)
 - [数据库表达式执行的黑魔法：用 Rust 做类型体操](https://zhuanlan.zhihu.com/p/460702914)
+- [Book: Types and Progaming Language](https://www.amazon.com/Types-Programming-Languages-MIT-Press/dp/0262162091) 
+- [Paper: Type inference with simple subtypes](https://www.cambridge.org/core/services/aop-cambridge-core/content/view/S0956796800000113)
