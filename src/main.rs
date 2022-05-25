@@ -4,14 +4,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use types::Int16Type;
+
 use crate::expr::{Literal, AST};
-use crate::function::{
-    vectorize_binary, vectorize_binary_passthrough_nullable, Function, FunctionRegistry,
-};
+use crate::function::FunctionRegistry;
 use crate::runtime::Runtime;
 use crate::types::boolean::BooleanType;
-use crate::types::int16::Int16Type;
-use crate::types::nullable::NullableType;
 use crate::types::DataType;
 use crate::values::Column;
 
@@ -90,30 +88,36 @@ fn main() {
         .into_iter()
         .collect(),
     );
+
+    run_ast(
+        &AST::FunctionCall {
+            name: "not".to_string(),
+            args: vec![AST::ColumnRef {
+                name: "a".to_string(),
+                data_type: DataType::Nullable(Box::new(DataType::Boolean)),
+            }],
+        },
+        [(
+            "a".to_string(),
+            Arc::new(Column::Nullable(
+                Arc::new(Column::Boolean(vec![true, false, true])),
+                vec![false, true, false],
+            )),
+        )]
+        .into_iter()
+        .collect(),
+    );
 }
 
 fn builtin_functions() -> FunctionRegistry {
-    FunctionRegistry::with_builtins(vec![
-        Function::new_2_arg::<BooleanType, BooleanType, BooleanType, _>("and", |lhs, rhs| {
-            vectorize_binary(lhs, rhs, |lhs: &bool, rhs: &bool| *lhs && *rhs)
-        }),
-        Function::new_2_arg::<
-            NullableType<BooleanType>,
-            NullableType<BooleanType>,
-            NullableType<BooleanType>,
-            _,
-        >("and", |lhs, rhs| {
-            vectorize_binary_passthrough_nullable(lhs, rhs, |lhs: &bool, rhs: &bool| *lhs && *rhs)
-        }),
-        Function::new_2_arg::<
-            NullableType<Int16Type>,
-            NullableType<Int16Type>,
-            NullableType<Int16Type>,
-            _,
-        >("plus", |lhs, rhs| {
-            vectorize_binary_passthrough_nullable(lhs, rhs, |lhs: &i16, rhs: &i16| *lhs + *rhs)
-        }),
-    ])
+    let mut registry = FunctionRegistry::default();
+
+    registry
+        .register_2_arg::<BooleanType, BooleanType, BooleanType, _>("and", |lhs, rhs| *lhs && *rhs);
+    registry.register_2_arg::<Int16Type, Int16Type, Int16Type, _>("plus", |lhs, rhs| *lhs + *rhs);
+    registry.register_1_arg::<BooleanType, BooleanType, _>("not", |lhs| !*lhs);
+
+    registry
 }
 
 pub fn run_ast(ast: &AST, columns: HashMap<String, Arc<Column>>) {
