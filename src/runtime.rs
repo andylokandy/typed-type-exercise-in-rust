@@ -1,23 +1,11 @@
 use std::{collections::HashMap, sync::Arc};
 
-use enum_as_inner::EnumAsInner;
-
 use crate::{
     expr::{Cast, Expr, Literal},
-    types::{any::AnyType, Type},
+    types::any::AnyType,
     values::{Column, Scalar},
+    values::{Value, ValueRef},
 };
-
-#[derive(EnumAsInner)]
-pub enum Value<T: Type> {
-    Scalar(T::Scalar),
-    Column(T::Column),
-}
-
-pub enum ValueRef<'a, T: Type> {
-    Scalar(T::ScalarRef<'a>),
-    Column(T::ColumnRef<'a>),
-}
 
 pub struct Runtime {
     pub columns: HashMap<String, Arc<Column>>,
@@ -30,15 +18,15 @@ impl Runtime {
             Expr::ColumnRef { name } => Value::Column(self.columns[name].clone()),
             Expr::FunctionCall { function, args } => {
                 let cols = args.iter().map(|expr| self.run(expr)).collect::<Vec<_>>();
-                let cols_ref = cols.iter().map(Into::into).collect::<Vec<_>>();
+                let cols_ref = cols.iter().map(Value::as_ref).collect::<Vec<_>>();
                 (function.eval)(cols_ref.as_slice())
             }
-            Expr::Cast { expr, casts } => self.run_cast((&self.run(expr)).into(), casts),
+            Expr::Cast { expr, casts } => self.run_cast(self.run(expr).as_ref(), casts),
         }
     }
 
     pub fn run_cast(&self, input: ValueRef<AnyType>, casts: &[Cast]) -> Value<AnyType> {
-        casts.iter().fold(input.into(), |val, cast| match cast {
+        casts.iter().fold(input.to_owned(), |val, cast| match cast {
             Cast::Int8ToInt16 => match val {
                 Value::Scalar(Scalar::Int8(val)) => Value::Scalar(Scalar::Int16(val as i16)),
                 Value::Column(col) => {
@@ -75,10 +63,10 @@ impl Runtime {
             },
             Cast::MapNullable(casts) => match val {
                 Value::Scalar(Scalar::Null) => Value::Scalar(Scalar::Null),
-                val @ Value::Scalar(_) => self.run_cast((&val).into(), casts),
+                Value::Scalar(_) => self.run_cast(val.as_ref(), casts),
                 Value::Column(col) => {
                     let (col, nulls) = col.as_nullable().unwrap();
-                    let col = self.run_cast((&Value::Column(col.clone())).into(), casts);
+                    let col = self.run_cast(ValueRef::Column(col.clone()), casts);
                     Value::Column(Arc::new(Column::Nullable(
                         col.into_column().ok().unwrap(),
                         nulls.clone(),
@@ -98,24 +86,6 @@ impl Runtime {
             Literal::Boolean(val) => Scalar::Boolean(*val),
             Literal::String(val) => Scalar::String(val.clone()),
             Literal::Array(_items) => todo!(),
-        }
-    }
-}
-
-impl<'a, T: Type> From<&'a Value<T>> for ValueRef<'a, T> {
-    fn from(value: &'a Value<T>) -> Self {
-        match value {
-            Value::Scalar(scalar) => ValueRef::Scalar(T::to_scalar_ref(scalar)),
-            Value::Column(col) => ValueRef::Column(T::to_column_ref(col)),
-        }
-    }
-}
-
-impl<'a, T: Type> From<ValueRef<'a, T>> for Value<T> {
-    fn from(value: ValueRef<'a, T>) -> Self {
-        match value {
-            ValueRef::Scalar(scalar) => Value::Scalar(T::to_owned_scalar(scalar)),
-            ValueRef::Column(col) => Value::Column(T::to_owned_column(col)),
         }
     }
 }

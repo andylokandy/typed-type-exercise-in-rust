@@ -2,6 +2,20 @@ use std::sync::Arc;
 
 use enum_as_inner::EnumAsInner;
 
+use crate::types::Type;
+
+#[derive(EnumAsInner)]
+pub enum Value<T: Type> {
+    Scalar(T::Scalar),
+    Column(T::Column),
+}
+
+#[derive(EnumAsInner)]
+pub enum ValueRef<'a, T: Type> {
+    Scalar(T::ScalarRef<'a>),
+    Column(T::ColumnRef<'a>),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default, EnumAsInner)]
 pub enum Scalar {
     #[default]
@@ -33,6 +47,33 @@ pub enum Array {
     Empty,
     Any(Vec<Scalar>),
     Uniform(Arc<Column>),
+}
+
+impl<'a, T: Type> ValueRef<'a, T> {
+    pub fn to_owned(self) -> Value<T> {
+        match self {
+            ValueRef::Scalar(scalar) => Value::Scalar(T::to_owned_scalar(scalar)),
+            ValueRef::Column(col) => Value::Column(T::to_owned_column(col)),
+        }
+    }
+}
+
+impl<'a, T: Type> Value<T> {
+    pub fn as_ref(&'a self) -> ValueRef<'a, T> {
+        match self {
+            Value::Scalar(scalar) => ValueRef::Scalar(T::to_scalar_ref(scalar)),
+            Value::Column(col) => ValueRef::Column(T::to_column_ref(col)),
+        }
+    }
+}
+
+impl<'a, T: Type> Clone for ValueRef<'a, T> {
+    fn clone(&self) -> Self {
+        match self {
+            ValueRef::Scalar(scalar) => ValueRef::Scalar(scalar.clone()),
+            ValueRef::Column(col) => ValueRef::Column(col.clone()),
+        }
+    }
 }
 
 impl Column {

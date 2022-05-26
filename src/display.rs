@@ -2,8 +2,8 @@ use std::fmt::{Display, Formatter};
 
 use crate::{
     expr::{Cast, Expr, Literal, AST},
-    runtime::Value,
     types::{DataType, Type},
+    values::Value,
 };
 
 impl Display for AST {
@@ -11,8 +11,19 @@ impl Display for AST {
         match self {
             AST::Literal(literal) => write!(f, "{literal}"),
             AST::ColumnRef { name, data_type } => write!(f, "{name}::{data_type}"),
-            AST::FunctionCall { name, args } => {
-                write!(f, "{name}(")?;
+            AST::FunctionCall { name, args, params } => {
+                write!(f, "{name}")?;
+                if !params.is_empty() {
+                    write!(f, "(")?;
+                    for (i, param) in params.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{param}")?;
+                    }
+                    write!(f, ")")?;
+                }
+                write!(f, "(")?;
                 for (i, arg) in args.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;

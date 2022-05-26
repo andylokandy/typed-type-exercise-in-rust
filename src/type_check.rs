@@ -1,6 +1,8 @@
+use std::sync::Arc;
+
 use crate::{
     expr::{Cast, Expr, Literal, AST},
-    function::FunctionRegistry,
+    function::{Function, FunctionRegistry},
     types::DataType,
 };
 
@@ -13,13 +15,13 @@ pub fn check(ast: &AST, fn_registry: &FunctionRegistry) -> Option<(Expr, DataTyp
         AST::ColumnRef { name, data_type } => {
             Some((Expr::ColumnRef { name: name.clone() }, data_type.clone()))
         }
-        AST::FunctionCall { name, args } => {
+        AST::FunctionCall { name, args, params } => {
             let args = args
                 .iter()
                 .map(|arg| check(arg, fn_registry))
                 .collect::<Option<Vec<_>>>()?;
 
-            try_search_function(name, &args, fn_registry)
+            check_function(name, &args, params, fn_registry)
         }
     }
 }
@@ -37,12 +39,14 @@ pub fn check_literal(literal: &Literal<AST>) -> (Literal<Expr>, DataType) {
     }
 }
 
-pub fn try_search_function(
+pub fn check_function(
     name: &str,
     args: &[(Expr, DataType)],
+    params: &[usize],
     fn_registry: &FunctionRegistry,
 ) -> Option<(Expr, DataType)> {
-    for func in fn_registry.search(name, args.len()) {
+    let args_ty = args.iter().map(|(_, ty)| ty).collect::<Vec<_>>();
+    for func in search_function_candidates(name, &args_ty, params, fn_registry) {
         if let Some(checked_args) = try_check_function(args, &func.signature.args_type) {
             return Some((
                 Expr::FunctionCall {
@@ -55,6 +59,35 @@ pub fn try_search_function(
     }
 
     None
+}
+
+pub fn search_function_candidates(
+    name: &str,
+    args_ty: &[&DataType],
+    params: &[usize],
+    fn_registry: &FunctionRegistry,
+) -> Vec<Arc<Function>> {
+    if params.is_empty() {
+        let normal_funcs = fn_registry
+            .funcs
+            .iter()
+            .filter(|func| {
+                func.signature.name == name && func.signature.args_type.len() == args_ty.len()
+            })
+            .map(Arc::clone)
+            .collect::<Vec<_>>();
+
+        if !normal_funcs.is_empty() {
+            return normal_funcs;
+        }
+    }
+
+    fn_registry
+        .factories
+        .get(name)
+        .and_then(|factory| factory(params, args_ty))
+        .map(|func| vec![func])
+        .unwrap_or(Vec::new())
 }
 
 pub fn try_check_function<'a, 'b>(

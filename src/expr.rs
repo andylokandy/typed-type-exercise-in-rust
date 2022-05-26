@@ -5,8 +5,15 @@ use crate::{function::Function, types::DataType};
 #[derive(Debug, Clone)]
 pub enum AST {
     Literal(Literal<AST>),
-    ColumnRef { name: String, data_type: DataType },
-    FunctionCall { name: String, args: Vec<AST> },
+    ColumnRef {
+        name: String,
+        data_type: DataType,
+    },
+    FunctionCall {
+        name: String,
+        params: Vec<usize>,
+        args: Vec<AST>,
+    },
 }
 
 #[derive(Debug, Clone)]
