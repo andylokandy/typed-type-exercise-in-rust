@@ -1,11 +1,14 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use educe::Educe;
 
 use crate::{
-    runtime::{Value, ValueRef},
     types::*,
+    values::{Value, ValueRef},
 };
+
+pub type FunctionFactory = Box<dyn Fn(&[usize], &[&DataType]) -> Option<Arc<Function>>>;
+
 #[derive(Debug, Clone)]
 pub struct FunctionSignature {
     pub name: &'static str,
@@ -38,14 +41,15 @@ impl Function {
 }
 
 #[derive(Default)]
-pub struct FunctionRegistry(Vec<Arc<Function>>);
+pub struct FunctionRegistry {
+    pub funcs: Vec<Arc<Function>>,
+    /// A function to build function depending on the type of arguments (before coersion) and the const parameters.
+    ///
+    /// The first argument is the const parameters and the second argument is the type of arguments.
+    pub factories: HashMap<&'static str, FunctionFactory>,
+}
 
 impl FunctionRegistry {
-    pub fn with_builtins(func: Vec<Function>) -> FunctionRegistry {
-        let fns = func.into_iter().map(Arc::new).collect();
-        FunctionRegistry(fns)
-    }
-
     pub fn register_1_arg<I1: Type, O: Type, F>(&mut self, name: &'static str, func: F)
     where
         F: for<'a> Fn(I1::ScalarRef<'a>) -> O::Scalar + 'static + Clone + Copy,
@@ -72,7 +76,7 @@ impl FunctionRegistry {
     where
         F: Fn(ValueRef<I1>) -> Value<O> + 'static + Clone + Copy,
     {
-        self.0.push(Arc::new(Function {
+        self.funcs.push(Arc::new(Function {
             signature: FunctionSignature {
                 name,
                 args_type: vec![I1::data_type()],
@@ -124,7 +128,7 @@ impl FunctionRegistry {
             + Clone
             + Copy,
     {
-        self.0.push(Arc::new(Function {
+        self.funcs.push(Arc::new(Function {
             signature: FunctionSignature {
                 name,
                 args_type: vec![I1::data_type(), I2::data_type()],
@@ -134,14 +138,8 @@ impl FunctionRegistry {
         }));
     }
 
-    pub fn search(&self, name: &str, args_len: usize) -> Vec<Arc<Function>> {
-        self.0
-            .iter()
-            .filter(|func| {
-                func.signature.name == name && func.signature.args_type.len() == args_len
-            })
-            .map(Arc::clone)
-            .collect()
+    pub fn register_function_factory(&mut self, name: &'static str, factory: FunctionFactory) {
+        self.factories.insert(name, factory);
     }
 }
 
@@ -199,10 +197,10 @@ pub fn vectorize_1_arg<'a, I1: Type, O: Type>(
     }
 }
 
-pub fn vectorize_2_arg<'a, I1: Type, I2: Type, O: Type>(
+pub fn vectorize_2_arg<'a, 'b, I1: Type, I2: Type, O: Type>(
     lhs: ValueRef<'a, I1>,
-    rhs: ValueRef<'a, I2>,
-    func: impl Fn(I1::ScalarRef<'a>, I2::ScalarRef<'a>) -> O::Scalar,
+    rhs: ValueRef<'b, I2>,
+    func: impl Fn(I1::ScalarRef<'a>, I2::ScalarRef<'b>) -> O::Scalar,
 ) -> Value<O> {
     match (lhs, rhs) {
         (ValueRef::Scalar(lhs), ValueRef::Scalar(rhs)) => Value::Scalar(func(lhs, rhs)),
@@ -240,10 +238,11 @@ pub fn vectorize_passthrough_nullable_1_arg<'a, I1: Type, O: Type>(
         }
     }
 }
-pub fn vectorize_passthrough_nullable_2_arg<'a, I1: Type, I2: Type, O: Type>(
+
+pub fn vectorize_passthrough_nullable_2_arg<'a, 'b, I1: Type, I2: Type, O: Type>(
     lhs: ValueRef<'a, NullableType<I1>>,
-    rhs: ValueRef<'a, NullableType<I2>>,
-    func: impl Fn(I1::ScalarRef<'a>, I2::ScalarRef<'a>) -> O::Scalar,
+    rhs: ValueRef<'b, NullableType<I2>>,
+    func: impl Fn(I1::ScalarRef<'a>, I2::ScalarRef<'b>) -> O::Scalar,
 ) -> Value<NullableType<O>> {
     match (lhs, rhs) {
         (ValueRef::Scalar(None), _) | (_, ValueRef::Scalar(None)) => Value::Scalar(None),
