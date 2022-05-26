@@ -7,8 +7,6 @@ use crate::{
     values::{Value, ValueRef},
 };
 
-pub type FunctionFactory = Box<dyn Fn(&[usize], &[&DataType]) -> Option<Arc<Function>>>;
-
 #[derive(Debug, Clone)]
 pub struct FunctionSignature {
     pub name: &'static str,
@@ -43,10 +41,13 @@ impl Function {
 #[derive(Default)]
 pub struct FunctionRegistry {
     pub funcs: Vec<Arc<Function>>,
-    /// A function to build function depending on the type of arguments (before coersion) and the const parameters.
+    /// A function to build function depending on the const parameters and the type of arguments (before coersion).
     ///
     /// The first argument is the const parameters and the second argument is the type of arguments.
-    pub factories: HashMap<&'static str, FunctionFactory>,
+    pub factories: HashMap<
+        &'static str,
+        Box<dyn Fn(&[usize], &[&DataType]) -> Option<Arc<Function>> + 'static>,
+    >,
 }
 
 impl FunctionRegistry {
@@ -138,8 +139,12 @@ impl FunctionRegistry {
         }));
     }
 
-    pub fn register_function_factory(&mut self, name: &'static str, factory: FunctionFactory) {
-        self.factories.insert(name, factory);
+    pub fn register_function_factory(
+        &mut self,
+        name: &'static str,
+        factory: impl Fn(&[usize], &[&DataType]) -> Option<Arc<Function>> + 'static,
+    ) {
+        self.factories.insert(name, Box::new(factory));
     }
 }
 

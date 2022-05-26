@@ -136,41 +136,36 @@ fn builtin_functions() -> FunctionRegistry {
         .register_2_arg::<BooleanType, BooleanType, BooleanType, _>("and", |lhs, rhs| *lhs && *rhs);
     registry.register_2_arg::<Int16Type, Int16Type, Int16Type, _>("plus", |lhs, rhs| *lhs + *rhs);
     registry.register_1_arg::<BooleanType, BooleanType, _>("not", |lhs| !*lhs);
-    registry.register_function_factory(
-        "least",
-        Box::new(|_, args_ty| {
-            let func = Function {
-                signature: FunctionSignature {
-                    name: "least",
-                    args_type: vec![DataType::Int16; args_ty.len()],
-                    return_type: DataType::Int16,
-                },
-                eval: Box::new(|args| {
-                    if args.len() == 0 {
-                        Value::Scalar(Scalar::Int16(0))
-                    } else if args.len() == 1 {
-                        args[0].clone().to_owned()
-                    } else {
-                        let mut min: Value<Int16Type> = vectorize_2_arg(
-                            Int16Type::try_downcast_value(&args[0]).unwrap(),
-                            Int16Type::try_downcast_value(&args[1]).unwrap(),
+    registry.register_function_factory("least", |_, args_ty| {
+        Some(Arc::new(Function {
+            signature: FunctionSignature {
+                name: "least",
+                args_type: vec![DataType::Int16; args_ty.len()],
+                return_type: DataType::Int16,
+            },
+            eval: Box::new(|args| {
+                if args.len() == 0 {
+                    Value::Scalar(Scalar::Int16(0))
+                } else if args.len() == 1 {
+                    args[0].clone().to_owned()
+                } else {
+                    let mut min: Value<Int16Type> = vectorize_2_arg(
+                        Int16Type::try_downcast_value(&args[0]).unwrap(),
+                        Int16Type::try_downcast_value(&args[1]).unwrap(),
+                        |lhs, rhs| *lhs.min(rhs),
+                    );
+                    for arg in &args[2..] {
+                        min = vectorize_2_arg(
+                            min.as_ref(),
+                            Int16Type::try_downcast_value(arg).unwrap(),
                             |lhs, rhs| *lhs.min(rhs),
                         );
-                        for arg in &args[2..] {
-                            min = vectorize_2_arg(
-                                min.as_ref(),
-                                Int16Type::try_downcast_value(arg).unwrap(),
-                                |lhs, rhs| *lhs.min(rhs),
-                            );
-                        }
-                        Int16Type::upcast_value(min)
                     }
-                }),
-            };
-
-            Some(Arc::new(func))
-        }),
-    );
+                    Int16Type::upcast_value(min)
+                }
+            }),
+        }))
+    });
 
     registry
 }
