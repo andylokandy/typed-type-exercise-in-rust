@@ -1,19 +1,20 @@
 #![feature(generic_associated_types)]
-#![feature(derive_default_enum)]
+#![feature(iterator_try_reduce)]
+#![feature(box_patterns)]
+#![feature(associated_type_defaults)]
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use function::{vectorize_2_arg, Function, FunctionSignature};
-use types::{Int16Type, Type};
-use values::{Scalar, Value};
-
 use crate::expr::{Literal, AST};
 use crate::function::FunctionRegistry;
+use crate::function::{vectorize_2_arg, Function, FunctionSignature};
 use crate::runtime::Runtime;
-use crate::types::boolean::BooleanType;
 use crate::types::DataType;
+use crate::types::*;
+use crate::types::{ArgType, ArrayType, Int16Type};
 use crate::values::Column;
+use crate::values::{Scalar, Value, ValueRef};
 
 pub mod display;
 pub mod expr;
@@ -50,10 +51,10 @@ fn main() {
         },
         [(
             "a".to_string(),
-            Arc::new(Column::Nullable(
-                Arc::new(Column::UInt8(vec![10, 11, 12])),
-                vec![false, true, false],
-            )),
+            Arc::new(Column::Nullable {
+                column: Arc::new(Column::UInt8(vec![10, 11, 12])),
+                nulls: vec![false, true, false],
+            }),
         )]
         .into_iter()
         .collect(),
@@ -77,17 +78,17 @@ fn main() {
         [
             (
                 "a".to_string(),
-                Arc::new(Column::Nullable(
-                    Arc::new(Column::UInt8(vec![10, 11, 12])),
-                    vec![false, true, false],
-                )),
+                Arc::new(Column::Nullable {
+                    column: Arc::new(Column::UInt8(vec![10, 11, 12])),
+                    nulls: vec![false, true, false],
+                }),
             ),
             (
                 "b".to_string(),
-                Arc::new(Column::Nullable(
-                    Arc::new(Column::UInt8(vec![1, 2, 3])),
-                    vec![false, true, true],
-                )),
+                Arc::new(Column::Nullable {
+                    column: Arc::new(Column::UInt8(vec![1, 2, 3])),
+                    nulls: vec![false, true, true],
+                }),
             ),
         ]
         .into_iter()
@@ -105,10 +106,10 @@ fn main() {
         },
         [(
             "a".to_string(),
-            Arc::new(Column::Nullable(
-                Arc::new(Column::Boolean(vec![true, false, true])),
-                vec![false, true, false],
-            )),
+            Arc::new(Column::Nullable {
+                column: Arc::new(Column::Boolean(vec![true, false, true])),
+                nulls: vec![false, true, false],
+            }),
         )]
         .into_iter()
         .collect(),
@@ -132,18 +133,20 @@ fn main() {
 fn builtin_functions() -> FunctionRegistry {
     let mut registry = FunctionRegistry::default();
 
+    registry.register_2_arg::<BooleanType, BooleanType, BooleanType, _>("and", |lhs, rhs, _| {
+        *lhs && *rhs
+    });
     registry
-        .register_2_arg::<BooleanType, BooleanType, BooleanType, _>("and", |lhs, rhs| *lhs && *rhs);
-    registry.register_2_arg::<Int16Type, Int16Type, Int16Type, _>("plus", |lhs, rhs| *lhs + *rhs);
-    registry.register_1_arg::<BooleanType, BooleanType, _>("not", |lhs| !*lhs);
-    registry.register_function_factory("least", |_, args_ty| {
+        .register_2_arg::<Int16Type, Int16Type, Int16Type, _>("plus", |lhs, rhs, _| *lhs + *rhs);
+    registry.register_1_arg::<BooleanType, BooleanType, _>("not", |lhs, _| !*lhs);
+    registry.register_function_factory("least", |_, args_len| {
         Some(Arc::new(Function {
             signature: FunctionSignature {
                 name: "least",
-                args_type: vec![DataType::Int16; args_ty.len()],
+                args_type: vec![DataType::Int16; args_len],
                 return_type: DataType::Int16,
             },
-            eval: Box::new(|args| {
+            eval: Box::new(|args, generics| {
                 if args.len() == 0 {
                     Value::Scalar(Scalar::Int16(0))
                 } else if args.len() == 1 {
@@ -152,13 +155,15 @@ fn builtin_functions() -> FunctionRegistry {
                     let mut min: Value<Int16Type> = vectorize_2_arg(
                         Int16Type::try_downcast_value(&args[0]).unwrap(),
                         Int16Type::try_downcast_value(&args[1]).unwrap(),
-                        |lhs, rhs| *lhs.min(rhs),
+                        generics,
+                        |lhs, rhs, _| *lhs.min(rhs),
                     );
                     for arg in &args[2..] {
                         min = vectorize_2_arg(
                             min.as_ref(),
                             Int16Type::try_downcast_value(arg).unwrap(),
-                            |lhs, rhs| *lhs.min(rhs),
+                            generics,
+                            |lhs, rhs, _| *lhs.min(rhs),
                         );
                     }
                     Int16Type::upcast_value(min)
@@ -166,15 +171,45 @@ fn builtin_functions() -> FunctionRegistry {
             }),
         }))
     });
+    registry.register_function_factory("array", |_, args_len| {
+        Some(Arc::new(Function {
+            signature: FunctionSignature {
+                name: "array",
+                args_type: vec![DataType::Generic(0); args_len],
+                return_type: DataType::Generic(0),
+            },
+            eval: Box::new(|args, generics| match generics[&0] {
+                DataType::Boolean => create_array_scalar::<BooleanType>(args),
+                DataType::Int16 => create_array_scalar::<Int16Type>(args),
+                _ => unimplemented!(),
+            }),
+        }))
+    });
+    registry.register_2_arg::<ArrayType<GenericType<0>>, Int16Type, GenericType<0>, _>(
+        "get",
+        |array, idx, generics| array.index(*idx as usize),
+    );
 
     registry
 }
 
+fn create_array_scalar<T: ArgType + ColumnBuilder>(args: &[ValueRef<AnyType>]) -> Value<AnyType> {
+    Value::Scalar(Scalar::Array(T::upcast_column(T::column_from_iter(
+        args.iter().cloned().map(|arg| match arg {
+            ValueRef::Scalar(scalar) => T::to_owned_scalar(T::try_downcast_scalar(scalar).unwrap()),
+            ValueRef::Column(_) => unimplemented!(),
+            _ => unreachable!(),
+        }),
+    ))))
+}
+
 pub fn run_ast(ast: &AST, columns: HashMap<String, Arc<Column>>) {
+    println!("ast: {ast}");
     let fn_registry = builtin_functions();
     let (expr, ty) = type_check::check(&ast, &fn_registry).unwrap();
+    println!("expr: {expr}");
+    println!("ty: {ty}");
     let runtime = Runtime { columns };
     let result = runtime.run(&expr);
-
-    println!("ast: {ast}\nexpr: {expr}\ntype: {ty}\nresult: {result}\n");
+    println!("result: {result}\n");
 }

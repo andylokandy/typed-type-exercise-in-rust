@@ -1,16 +1,16 @@
-use std::sync::Arc;
+use std::collections::HashMap;
 
 use crate::{
-    expr::{Cast, Expr, Literal, AST},
-    function::{Function, FunctionRegistry},
-    types::DataType,
+    expr::{Expr, Literal, AST},
+    function::{FunctionRegistry, FunctionSignature},
+    types::{DataType, GenericMap},
 };
 
 pub fn check(ast: &AST, fn_registry: &FunctionRegistry) -> Option<(Expr, DataType)> {
     match ast {
         AST::Literal(lit) => {
-            let (lit, ty) = check_literal(lit);
-            Some((Expr::Literal(lit), ty))
+            let ty = check_literal(lit);
+            Some((Expr::Literal(lit.clone()), ty))
         }
         AST::ColumnRef { name, data_type } => {
             Some((Expr::ColumnRef { name: name.clone() }, data_type.clone()))
@@ -26,16 +26,15 @@ pub fn check(ast: &AST, fn_registry: &FunctionRegistry) -> Option<(Expr, DataTyp
     }
 }
 
-pub fn check_literal(literal: &Literal<AST>) -> (Literal<Expr>, DataType) {
+pub fn check_literal(literal: &Literal) -> DataType {
     match literal {
-        Literal::Null => (Literal::Null, DataType::Nullable(Box::new(DataType::Hole))),
-        Literal::Int8(val) => (Literal::Int8(*val), DataType::Int8),
-        Literal::Int16(val) => (Literal::Int16(*val), DataType::Int16),
-        Literal::UInt8(val) => (Literal::UInt8(*val), DataType::UInt8),
-        Literal::UInt16(val) => (Literal::UInt16(*val), DataType::UInt16),
-        Literal::Boolean(val) => (Literal::Boolean(*val), DataType::Boolean),
-        Literal::Array(_items) => todo!(),
-        Literal::String(val) => (Literal::String(val.clone()), DataType::String),
+        Literal::Null => DataType::Null,
+        Literal::Int8(_) => DataType::Int8,
+        Literal::Int16(_) => DataType::Int16,
+        Literal::UInt8(_) => DataType::UInt8,
+        Literal::UInt16(_) => DataType::UInt16,
+        Literal::Boolean(_) => DataType::Boolean,
+        Literal::String(_) => DataType::String,
     }
 }
 
@@ -45,15 +44,17 @@ pub fn check_function(
     params: &[usize],
     fn_registry: &FunctionRegistry,
 ) -> Option<(Expr, DataType)> {
-    let args_ty = args.iter().map(|(_, ty)| ty).collect::<Vec<_>>();
-    for func in search_function_candidates(name, &args_ty, params, fn_registry) {
-        if let Some(checked_args) = try_check_function(args, &func.signature.args_type) {
+    for (id, func) in fn_registry.search_candidates(name, params, args.len()) {
+        if let Some((checked_args, return_ty, generics)) = try_check_function(args, &func.signature)
+        {
             return Some((
                 Expr::FunctionCall {
+                    id,
                     function: func.clone(),
+                    generics,
                     args: checked_args,
                 },
-                func.signature.return_type.clone(),
+                return_ty,
             ));
         }
     }
@@ -61,87 +62,134 @@ pub fn check_function(
     None
 }
 
-pub fn search_function_candidates(
-    name: &str,
-    args_ty: &[&DataType],
-    params: &[usize],
-    fn_registry: &FunctionRegistry,
-) -> Vec<Arc<Function>> {
-    if params.is_empty() {
-        let normal_funcs = fn_registry
-            .funcs
-            .iter()
-            .filter(|func| {
-                func.signature.name == name && func.signature.args_type.len() == args_ty.len()
-            })
-            .map(Arc::clone)
-            .collect::<Vec<_>>();
-
-        if !normal_funcs.is_empty() {
-            return normal_funcs;
-        }
-    }
-
-    fn_registry
-        .factories
-        .get(name)
-        .and_then(|factory| factory(params, args_ty))
-        .map(|func| vec![func])
-        .unwrap_or(Vec::new())
-}
-
 pub fn try_check_function<'a, 'b>(
     args: &[(Expr, DataType)],
-    sig_types: &[DataType],
-) -> Option<Vec<Expr>> {
-    let mut checked_args = Vec::new();
-    for ((arg, arg_type), sig_type) in args.iter().zip(sig_types) {
-        match try_coerce(arg_type, sig_type) {
-            Some(casts) => {
-                if casts.is_empty() {
-                    checked_args.push(arg.clone());
-                } else {
-                    checked_args.push(Expr::Cast {
-                        expr: Box::new(arg.clone()),
-                        casts,
-                    });
+    sig: &FunctionSignature,
+) -> Option<(Vec<Expr>, DataType, GenericMap)> {
+    assert_eq!(args.len(), sig.args_type.len());
+
+    let substs = args
+        .iter()
+        .map(|(_, ty)| ty)
+        .zip(&sig.args_type)
+        .map(|(src_ty, dest_ty)| unify(src_ty, dest_ty))
+        .collect::<Option<Vec<_>>>()?;
+    let subst = substs
+        .into_iter()
+        .try_reduce(|subst1, subst2| subst1.merge(subst2))?
+        .unwrap_or(Subsitution::empty());
+
+    let checked_args = args
+        .iter()
+        .zip(&sig.args_type)
+        .map(|((arg, arg_type), sig_type)| {
+            let sig_type = subst.apply(sig_type.clone())?;
+            Some(if *arg_type == sig_type {
+                arg.clone()
+            } else {
+                Expr::Cast {
+                    expr: Box::new(arg.clone()),
+                    dest_type: sig_type,
                 }
-            }
-            None => {
-                return None;
-            }
-        }
-    }
-    Some(checked_args)
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+
+    let return_type = subst.apply(sig.return_type.clone())?;
+
+    Some((checked_args, return_type, subst.0))
 }
 
-pub fn try_coerce(src_ty: &DataType, dest_ty: &DataType) -> Option<Vec<Cast>> {
-    // println!("try_coerce {:?}, {:?}, {:?}", &expr, &ty, required_type);
+#[derive(Debug)]
+pub struct Subsitution(pub GenericMap);
+
+impl Subsitution {
+    pub fn empty() -> Self {
+        Subsitution(HashMap::new())
+    }
+
+    pub fn equation(idx: usize, ty: DataType) -> Self {
+        let mut subst = Self::empty();
+        subst.0.insert(idx, ty);
+        subst
+    }
+
+    pub fn merge(mut self, other: Self) -> Option<Self> {
+        for (idx, ty1) in other.0 {
+            if let Some(ty2) = self.0.remove(&idx) {
+                let common_ty = common_super_type(ty1, ty2)?;
+                self.0.insert(idx, common_ty);
+            } else {
+                self.0.insert(idx, ty1);
+            }
+        }
+
+        Some(self)
+    }
+
+    pub fn apply(&self, ty: DataType) -> Option<DataType> {
+        match ty {
+            DataType::Generic(idx) => self.0.get(&idx).cloned(),
+            DataType::Nullable(box ty) => Some(DataType::Nullable(Box::new(self.apply(ty)?))),
+            DataType::Array(box ty) => Some(DataType::Array(Box::new(self.apply(ty)?))),
+            ty => Some(ty),
+        }
+    }
+}
+
+pub fn unify(src_ty: &DataType, dest_ty: &DataType) -> Option<Subsitution> {
     match (src_ty, dest_ty) {
-        (src_ty, dest_ty) if subtype(&src_ty, dest_ty) => Some(vec![]),
-        (DataType::Nullable(src_ty), DataType::Nullable(dest_ty)) => {
-            let casts = try_coerce(src_ty, dest_ty)?;
-            Some(vec![Cast::MapNullable(casts)])
-        }
-        (src_ty, DataType::Nullable(dest_ty)) => {
-            let mut casts = try_coerce(src_ty, dest_ty)?;
-            casts.push(Cast::ToNullable);
-            Some(casts)
-        }
-        (DataType::UInt8, DataType::UInt16) => Some(vec![Cast::UInt8ToUInt16]),
-        (DataType::Int8, DataType::Int16) => Some(vec![Cast::Int8ToInt16]),
-        (DataType::UInt8, DataType::Int16) => Some(vec![Cast::UInt8ToInt16]),
+        (DataType::Generic(_), _) => unreachable!("source type must not contain generic type"),
+        (ty, DataType::Generic(idx)) => Some(Subsitution::equation(*idx, ty.clone())),
+        (DataType::Nullable(src_ty), DataType::Nullable(dest_ty)) => unify(src_ty, dest_ty),
+        (DataType::Array(src_ty), DataType::Array(dest_ty)) => unify(src_ty, dest_ty),
+        (src_ty, DataType::Nullable(dest_ty)) => unify(src_ty, dest_ty),
+        (src_ty, dest_ty) if can_cast_to(src_ty, dest_ty) => Some(Subsitution::empty()),
         _ => None,
     }
 }
 
-pub fn subtype(src: &DataType, dest: &DataType) -> bool {
-    match (src, dest) {
-        (src, dest) if src == dest => true,
-        (_, DataType::Any) => true,
-        (DataType::Hole, _) => true,
-        (DataType::Array(src), DataType::Array(dest)) => subtype(src, dest),
-        (DataType::Nullable(src), DataType::Nullable(dest)) => subtype(src, dest),
+pub fn can_cast_to(src_ty: &DataType, dest_ty: &DataType) -> bool {
+    match (src_ty, dest_ty) {
+        (src_ty, dest_ty) if src_ty == dest_ty => true,
+        (DataType::Null, DataType::Nullable(_)) => true,
+        (DataType::EmptyArray, DataType::Array(_)) => true,
+        (DataType::Nullable(src_ty), DataType::Nullable(dest_ty)) => can_cast_to(src_ty, dest_ty),
+        (src_ty, DataType::Nullable(dest_ty)) => can_cast_to(src_ty, dest_ty),
+        (DataType::Array(src_ty), DataType::Array(dest_ty)) => can_cast_to(src_ty, dest_ty),
+        (DataType::UInt8, DataType::UInt16)
+        | (DataType::Int8, DataType::Int16)
+        | (DataType::UInt8, DataType::Int16) => true,
         _ => false,
+    }
+}
+
+pub fn common_super_type(ty1: DataType, ty2: DataType) -> Option<DataType> {
+    match (ty1, ty2) {
+        (ty1, ty2) if ty1 == ty2 => Some(ty1),
+        (DataType::Null, ty @ DataType::Nullable(_))
+        | (ty @ DataType::Nullable(_), DataType::Null) => Some(ty),
+        (DataType::Nullable(box ty1), DataType::Nullable(box ty2))
+        | (DataType::Nullable(box ty1), ty2)
+        | (ty1, DataType::Nullable(box ty2)) => {
+            Some(DataType::Nullable(Box::new(common_super_type(ty1, ty2)?)))
+        }
+        (DataType::EmptyArray, ty @ DataType::Array(_))
+        | (ty @ DataType::Array(_), DataType::EmptyArray) => Some(ty),
+        (DataType::Array(box ty1), DataType::Array(box ty2))
+        | (DataType::Array(box ty1), ty2)
+        | (ty1, DataType::Array(box ty2)) => {
+            Some(DataType::Array(Box::new(common_super_type(ty1, ty2)?)))
+        }
+        (DataType::UInt8, DataType::UInt16) | (DataType::UInt16, DataType::UInt8) => {
+            Some(DataType::UInt16)
+        }
+        (DataType::Int8, DataType::Int16) | (DataType::Int16, DataType::Int8) => {
+            Some(DataType::Int16)
+        }
+        (DataType::Int16, DataType::UInt8) | (DataType::UInt8, DataType::Int16) => {
+            Some(DataType::Int16)
+        }
+        _ => None,
     }
 }

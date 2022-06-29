@@ -1,55 +1,66 @@
 pub mod any;
+pub mod array;
 pub mod boolean;
+pub mod generic;
 pub mod int16;
 pub mod nullable;
 
 pub use any::AnyType;
+pub use array::ArrayType;
 pub use boolean::BooleanType;
-use enum_as_inner::EnumAsInner;
+pub use generic::GenericType;
 pub use int16::Int16Type;
 pub use nullable::NullableType;
 
-use std::{fmt::Debug, sync::Arc};
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    ops::{Index, Range},
+    sync::Arc,
+};
+
+use enum_as_inner::EnumAsInner;
 
 use crate::{
     values::{Column, Scalar},
     values::{Value, ValueRef},
 };
 
+pub type GenericMap = HashMap<usize, DataType>;
+
 #[derive(Debug, Clone, PartialEq, Eq, EnumAsInner)]
 pub enum DataType {
-    Any,
-    Hole,
-    Nullable(Box<DataType>),
-    Array(Box<DataType>),
     Boolean,
     String,
     UInt8,
     UInt16,
     Int8,
     Int16,
+    Null,
+    Nullable(Box<DataType>),
+    EmptyArray,
+    Array(Box<DataType>),
+    Generic(usize),
 }
 
-pub trait Type: Sized + 'static {
-    type Scalar: Debug + Default;
+pub trait ValueType: Sized + 'static {
+    type Scalar: Debug;
     type ScalarRef<'a>: Debug + Clone;
     type Column: Debug;
     type ColumnRef<'a>: Debug + Clone;
-    type ColumnIterator<'a>: Iterator<Item = Self::ScalarRef<'a>>;
 
-    fn data_type() -> DataType;
-    fn try_downcast_scalar<'a>(scalar: &'a Scalar) -> Option<Self::ScalarRef<'a>>;
-    fn try_downcast_column<'a>(col: &'a Arc<Column>) -> Option<Self::ColumnRef<'a>>;
-    fn upcast_scalar(scalar: Self::Scalar) -> Scalar;
-    fn upcast_column(col: Self::Column) -> Arc<Column>;
     fn to_owned_scalar<'a>(scalar: Self::ScalarRef<'a>) -> Self::Scalar;
     fn to_owned_column<'a>(col: Self::ColumnRef<'a>) -> Self::Column;
     fn to_scalar_ref<'a>(scalar: &'a Self::Scalar) -> Self::ScalarRef<'a>;
     fn to_column_ref<'a>(col: &'a Self::Column) -> Self::ColumnRef<'a>;
-    fn index_column<'a>(col: Self::ColumnRef<'a>, index: usize) -> Self::ScalarRef<'a>;
-    fn iter_column<'a>(col: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a>;
-    fn empty_column(capacity: usize) -> Self::Column;
-    fn push_column(col: Self::Column, item: Self::Scalar) -> Self::Column;
+}
+
+pub trait ArgType: ValueType {
+    fn data_type() -> DataType;
+    fn try_downcast_scalar<'a>(scalar: &'a Scalar) -> Option<Self::ScalarRef<'a>>;
+    fn try_downcast_column<'a>(col: &'a Column) -> Option<Self::ColumnRef<'a>>;
+    fn upcast_scalar(scalar: Self::Scalar) -> Scalar;
+    fn upcast_column(col: Self::Column) -> Column;
 
     fn try_downcast_value<'a>(value: &'a ValueRef<'_, AnyType>) -> Option<ValueRef<'a, Self>> {
         Some(match value {
@@ -64,6 +75,23 @@ pub trait Type: Sized + 'static {
             Value::Column(col) => Value::Column(Self::upcast_column(col)),
         }
     }
+}
+
+pub trait ColumnViewer: ValueType {
+    type ScalarBorrow<'a> = Self::ScalarRef<'a>;
+    type ColumnIterator<'a>: Iterator<Item = Self::ScalarBorrow<'a>>;
+
+    fn scalar_borrow_to_ref<'a>(scalar: &'a Self::ScalarBorrow<'a>) -> Self::ScalarRef<'a>;
+    fn column_len<'a>(col: Self::ColumnRef<'a>) -> usize;
+    fn index_column<'a>(col: Self::ColumnRef<'a>, index: usize) -> Self::ScalarBorrow<'a>;
+    fn slice_column<'a>(col: Self::ColumnRef<'a>, range: Range<usize>) -> Self::ColumnRef<'a>;
+    fn iter_column<'a>(col: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a>;
+}
+
+pub trait ColumnBuilder: ValueType {
+    fn empty_column(capacity: usize) -> Self::Column;
+    fn push_column(col: Self::Column, item: Self::Scalar) -> Self::Column;
+    fn append_column(col: Self::Column, other: Self::Column) -> Self::Column;
 
     fn column_from_iter(iter: impl Iterator<Item = Self::Scalar>) -> Self::Column {
         let mut col = Self::empty_column(iter.size_hint().0);
@@ -73,3 +101,17 @@ pub trait Type: Sized + 'static {
         col
     }
 }
+
+// #[macro_export]
+// macro_rules! dispatch_data_type {
+//     ($ty:expr, $expr:expr) => {{
+//         match_template::match_template! {
+//             TYPE = [
+//                 Boolean => $crate::types::BooleanType,
+//             ],
+//             match $api_version {
+//                 $crate::types::DataType::TYPE => $e,
+//             }
+//         }
+//     }};
+// }
