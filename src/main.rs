@@ -1,19 +1,20 @@
 #![feature(generic_associated_types)]
-#![feature(derive_default_enum)]
+#![feature(iterator_try_reduce)]
+#![feature(box_patterns)]
+#![feature(associated_type_defaults)]
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use function::{vectorize_2_arg, Function, FunctionSignature};
-use types::{Int16Type, Type};
-use values::{Scalar, Value};
-
 use crate::expr::{Literal, AST};
 use crate::function::FunctionRegistry;
+use crate::function::{vectorize_2_arg, Function, FunctionSignature};
 use crate::runtime::Runtime;
-use crate::types::boolean::BooleanType;
 use crate::types::DataType;
+use crate::types::*;
+use crate::types::{ArgType, ArrayType, Int16Type};
 use crate::values::Column;
+use crate::values::{Scalar, Value};
 
 pub mod display;
 pub mod expr;
@@ -50,10 +51,10 @@ fn main() {
         },
         [(
             "a".to_string(),
-            Arc::new(Column::Nullable(
-                Arc::new(Column::UInt8(vec![10, 11, 12])),
-                vec![false, true, false],
-            )),
+            Column::Nullable {
+                column: Box::new(Column::UInt8(vec![10, 11, 12])),
+                nulls: vec![false, true, false],
+            },
         )]
         .into_iter()
         .collect(),
@@ -77,17 +78,17 @@ fn main() {
         [
             (
                 "a".to_string(),
-                Arc::new(Column::Nullable(
-                    Arc::new(Column::UInt8(vec![10, 11, 12])),
-                    vec![false, true, false],
-                )),
+                Column::Nullable {
+                    column: Box::new(Column::UInt8(vec![10, 11, 12])),
+                    nulls: vec![false, true, false],
+                },
             ),
             (
                 "b".to_string(),
-                Arc::new(Column::Nullable(
-                    Arc::new(Column::UInt8(vec![1, 2, 3])),
-                    vec![false, true, true],
-                )),
+                Column::Nullable {
+                    column: Box::new(Column::UInt8(vec![1, 2, 3])),
+                    nulls: vec![false, true, true],
+                },
             ),
         ]
         .into_iter()
@@ -105,10 +106,10 @@ fn main() {
         },
         [(
             "a".to_string(),
-            Arc::new(Column::Nullable(
-                Arc::new(Column::Boolean(vec![true, false, true])),
-                vec![false, true, false],
-            )),
+            Column::Nullable {
+                column: Box::new(Column::Boolean(vec![true, false, true])),
+                nulls: vec![false, true, false],
+            },
         )]
         .into_iter()
         .collect(),
@@ -127,23 +128,110 @@ fn main() {
         },
         HashMap::new(),
     );
+
+    run_ast(
+        &AST::FunctionCall {
+            name: "get".to_string(),
+            args: vec![
+                AST::ColumnRef {
+                    name: "array".to_string(),
+                    data_type: DataType::Array(Box::new(DataType::Int16)),
+                },
+                AST::ColumnRef {
+                    name: "idx".to_string(),
+                    data_type: DataType::UInt8,
+                },
+            ],
+            params: vec![],
+        },
+        [
+            (
+                "array".to_string(),
+                Column::Array {
+                    array: Box::new(Column::Int16((0..100).collect())),
+                    offsets: vec![0..20, 20..40, 40..60, 60..80, 80..100],
+                },
+            ),
+            ("idx".to_string(), Column::UInt8(vec![0, 1, 2, 3, 4])),
+        ]
+        .into_iter()
+        .collect(),
+    );
+
+    run_ast(
+        &AST::FunctionCall {
+            name: "get".to_string(),
+            args: vec![
+                AST::ColumnRef {
+                    name: "array".to_string(),
+                    data_type: DataType::Array(Box::new(DataType::Array(Box::new(
+                        DataType::Int16,
+                    )))),
+                },
+                AST::ColumnRef {
+                    name: "idx".to_string(),
+                    data_type: DataType::UInt8,
+                },
+            ],
+            params: vec![],
+        },
+        [
+            (
+                "array".to_string(),
+                Column::Array {
+                    array: Box::new(Column::Array {
+                        array: Box::new(Column::Int16((0..100).collect())),
+                        offsets: vec![
+                            0..5,
+                            5..10,
+                            10..15,
+                            15..20,
+                            20..25,
+                            25..30,
+                            30..35,
+                            35..40,
+                            40..45,
+                            45..50,
+                            50..55,
+                            55..60,
+                            60..65,
+                            65..70,
+                            70..75,
+                            75..80,
+                            80..85,
+                            85..90,
+                            90..95,
+                            95..100,
+                        ],
+                    }),
+                    offsets: vec![0..4, 4..8, 8..12, 12..16, 16..20],
+                },
+            ),
+            ("idx".to_string(), Column::UInt8(vec![0, 1, 2])),
+        ]
+        .into_iter()
+        .collect(),
+    );
 }
 
 fn builtin_functions() -> FunctionRegistry {
     let mut registry = FunctionRegistry::default();
 
     registry
-        .register_2_arg::<BooleanType, BooleanType, BooleanType, _>("and", |lhs, rhs| *lhs && *rhs);
-    registry.register_2_arg::<Int16Type, Int16Type, Int16Type, _>("plus", |lhs, rhs| *lhs + *rhs);
-    registry.register_1_arg::<BooleanType, BooleanType, _>("not", |lhs| !*lhs);
-    registry.register_function_factory("least", |_, args_ty| {
+        .register_2_arg::<BooleanType, BooleanType, BooleanType, _>("and", |lhs, rhs| lhs && rhs);
+
+    registry.register_2_arg::<Int16Type, Int16Type, Int16Type, _>("plus", |lhs, rhs| lhs + rhs);
+
+    registry.register_1_arg::<BooleanType, BooleanType, _>("not", |val| !val);
+
+    registry.register_function_factory("least", |_, args_len| {
         Some(Arc::new(Function {
             signature: FunctionSignature {
                 name: "least",
-                args_type: vec![DataType::Int16; args_ty.len()],
+                args_type: vec![DataType::Int16; args_len],
                 return_type: DataType::Int16,
             },
-            eval: Box::new(|args| {
+            eval: Box::new(|args, generics| {
                 if args.len() == 0 {
                     Value::Scalar(Scalar::Int16(0))
                 } else if args.len() == 1 {
@@ -152,13 +240,15 @@ fn builtin_functions() -> FunctionRegistry {
                     let mut min: Value<Int16Type> = vectorize_2_arg(
                         Int16Type::try_downcast_value(&args[0]).unwrap(),
                         Int16Type::try_downcast_value(&args[1]).unwrap(),
-                        |lhs, rhs| *lhs.min(rhs),
+                        generics,
+                        |lhs, rhs| lhs.min(rhs),
                     );
                     for arg in &args[2..] {
                         min = vectorize_2_arg(
                             min.as_ref(),
                             Int16Type::try_downcast_value(arg).unwrap(),
-                            |lhs, rhs| *lhs.min(rhs),
+                            generics,
+                            |lhs, rhs| lhs.min(rhs),
                         );
                     }
                     Int16Type::upcast_value(min)
@@ -166,15 +256,31 @@ fn builtin_functions() -> FunctionRegistry {
             }),
         }))
     });
+    registry.register_function_factory("array", |_, args_len| {
+        Some(Arc::new(Function {
+            signature: FunctionSignature {
+                name: "array",
+                args_type: vec![DataType::Generic(0); args_len],
+                return_type: DataType::Generic(0),
+            },
+            eval: Box::new(|_args, _generics| todo!()),
+        }))
+    });
+    registry.register_2_arg::<ArrayType<GenericType<0>>, Int16Type, GenericType<0>, _>(
+        "get",
+        |array, idx| array.index(idx as usize).to_owned(),
+    );
 
     registry
 }
 
-pub fn run_ast(ast: &AST, columns: HashMap<String, Arc<Column>>) {
+pub fn run_ast(ast: &AST, columns: HashMap<String, Column>) {
+    println!("ast: {ast}");
     let fn_registry = builtin_functions();
     let (expr, ty) = type_check::check(&ast, &fn_registry).unwrap();
+    println!("expr: {expr}");
+    println!("ty: {ty}");
     let runtime = Runtime { columns };
     let result = runtime.run(&expr);
-
-    println!("ast: {ast}\nexpr: {expr}\ntype: {ty}\nresult: {result}\n");
+    println!("result: {result}\n");
 }
