@@ -8,7 +8,7 @@ pub struct BooleanType;
 
 impl ValueType for BooleanType {
     type Scalar = bool;
-    type ScalarRef<'a> = &'a bool;
+    type ScalarRef<'a> = bool;
     type Column = Vec<bool>;
     type ColumnRef<'a> = &'a [bool];
 
@@ -21,7 +21,7 @@ impl ValueType for BooleanType {
     }
 
     fn to_scalar_ref<'a>(scalar: &'a Self::Scalar) -> Self::ScalarRef<'a> {
-        scalar
+        *scalar
     }
 
     fn to_column_ref<'a>(col: &'a Self::Column) -> Self::ColumnRef<'a> {
@@ -36,7 +36,7 @@ impl ArgType for BooleanType {
 
     fn try_downcast_scalar<'a>(scalar: &'a Scalar) -> Option<Self::ScalarRef<'a>> {
         match scalar {
-            Scalar::Boolean(scalar) => Some(scalar),
+            Scalar::Boolean(scalar) => Some(*scalar),
             _ => None,
         }
     }
@@ -58,14 +58,14 @@ impl ArgType for BooleanType {
 }
 
 impl ColumnViewer for BooleanType {
-    type ColumnIterator<'a> = std::slice::Iter<'a, bool>;
+    type ColumnIterator<'a> = std::iter::Cloned<std::slice::Iter<'a, bool>>;
 
     fn column_len<'a>(col: Self::ColumnRef<'a>) -> usize {
         col.len()
     }
 
     fn index_column<'a>(col: Self::ColumnRef<'a>, index: usize) -> Self::ScalarRef<'a> {
-        &col[index]
+        col[index]
     }
 
     fn slice_column<'a>(col: Self::ColumnRef<'a>, range: Range<usize>) -> Self::ColumnRef<'a> {
@@ -73,7 +73,7 @@ impl ColumnViewer for BooleanType {
     }
 
     fn iter_column<'a>(col: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a> {
-        col.iter()
+        col.iter().cloned()
     }
 
     fn column_covariance<'a: 'b, 'b>(col: &'b Self::ColumnRef<'a>) -> Self::ColumnRef<'b> {

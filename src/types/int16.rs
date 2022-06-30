@@ -8,7 +8,7 @@ pub struct Int16Type;
 
 impl ValueType for Int16Type {
     type Scalar = i16;
-    type ScalarRef<'a> = &'a i16;
+    type ScalarRef<'a> = i16;
     type Column = Vec<i16>;
     type ColumnRef<'a> = &'a [i16];
 
@@ -21,7 +21,7 @@ impl ValueType for Int16Type {
     }
 
     fn to_scalar_ref<'a>(scalar: &'a Self::Scalar) -> Self::ScalarRef<'a> {
-        scalar
+        *scalar
     }
 
     fn to_column_ref<'a>(col: &'a Self::Column) -> Self::ColumnRef<'a> {
@@ -36,7 +36,7 @@ impl ArgType for Int16Type {
 
     fn try_downcast_scalar<'a>(scalar: &'a Scalar) -> Option<Self::ScalarRef<'a>> {
         match scalar {
-            Scalar::Int16(scalar) => Some(scalar),
+            Scalar::Int16(scalar) => Some(*scalar),
             _ => None,
         }
     }
@@ -58,14 +58,14 @@ impl ArgType for Int16Type {
 }
 
 impl ColumnViewer for Int16Type {
-    type ColumnIterator<'a> = std::slice::Iter<'a, i16>;
+    type ColumnIterator<'a> = std::iter::Cloned<std::slice::Iter<'a, i16>>;
 
     fn column_len<'a>(col: Self::ColumnRef<'a>) -> usize {
         col.len()
     }
 
     fn index_column<'a>(col: Self::ColumnRef<'a>, index: usize) -> Self::ScalarRef<'a> {
-        &col[index]
+        col[index]
     }
 
     fn slice_column<'a>(col: Self::ColumnRef<'a>, range: Range<usize>) -> Self::ColumnRef<'a> {
@@ -73,7 +73,7 @@ impl ColumnViewer for Int16Type {
     }
 
     fn iter_column<'a>(col: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a> {
-        col.iter()
+        col.iter().cloned()
     }
 
     fn column_covariance<'a: 'b, 'b>(col: &'b Self::ColumnRef<'a>) -> Self::ColumnRef<'b> {

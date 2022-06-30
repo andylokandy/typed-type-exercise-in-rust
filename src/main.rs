@@ -218,11 +218,11 @@ fn builtin_functions() -> FunctionRegistry {
     let mut registry = FunctionRegistry::default();
 
     registry
-        .register_2_arg::<BooleanType, BooleanType, BooleanType, _>("and", |lhs, rhs| *lhs && *rhs);
+        .register_2_arg::<BooleanType, BooleanType, BooleanType, _>("and", |lhs, rhs| lhs && rhs);
 
-    registry.register_2_arg::<Int16Type, Int16Type, Int16Type, _>("plus", |lhs, rhs| *lhs + *rhs);
+    registry.register_2_arg::<Int16Type, Int16Type, Int16Type, _>("plus", |lhs, rhs| lhs + rhs);
 
-    registry.register_1_arg::<BooleanType, BooleanType, _>("not", |val| !*val);
+    registry.register_1_arg::<BooleanType, BooleanType, _>("not", |val| !val);
 
     registry.register_function_factory("least", |_, args_len| {
         Some(Arc::new(Function {
@@ -241,14 +241,14 @@ fn builtin_functions() -> FunctionRegistry {
                         Int16Type::try_downcast_value(&args[0]).unwrap(),
                         Int16Type::try_downcast_value(&args[1]).unwrap(),
                         generics,
-                        |lhs, rhs| *lhs.min(rhs),
+                        |lhs, rhs| lhs.min(rhs),
                     );
                     for arg in &args[2..] {
                         min = vectorize_2_arg(
                             min.as_ref(),
                             Int16Type::try_downcast_value(arg).unwrap(),
                             generics,
-                            |lhs, rhs| *lhs.min(rhs),
+                            |lhs, rhs| lhs.min(rhs),
                         );
                     }
                     Int16Type::upcast_value(min)
@@ -268,7 +268,7 @@ fn builtin_functions() -> FunctionRegistry {
     });
     registry.register_2_arg::<ArrayType<GenericType<0>>, Int16Type, GenericType<0>, _>(
         "get",
-        |array, idx| array.index(*idx as usize).to_owned(),
+        |array, idx| array.index(idx as usize).to_owned(),
     );
 
     registry
