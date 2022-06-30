@@ -12,17 +12,11 @@ pub use generic::GenericType;
 pub use int16::Int16Type;
 pub use nullable::NullableType;
 
-use std::{
-    collections::HashMap,
-    fmt::Debug,
-    ops::{Index, Range},
-    sync::Arc,
-};
+use std::{fmt::Debug, ops::Range};
 
 use enum_as_inner::EnumAsInner;
 
 use crate::{
-    type_check::Subsitution,
     values::{Column, Scalar},
     values::{Value, ValueRef},
 };

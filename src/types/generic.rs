@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, ops::Range, sync::Arc};
+use std::ops::Range;
 
 use crate::values::{Column, ColumnIterator, Scalar};
 

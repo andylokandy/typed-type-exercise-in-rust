@@ -1,7 +1,6 @@
-use std::{ops::Range, sync::Arc};
+use std::ops::Range;
 
 use enum_as_inner::EnumAsInner;
-use match_template::match_template;
 
 use crate::types::*;
 
@@ -147,7 +146,12 @@ impl Column {
                     .get(range.start)
                     .map(|range| range.start)
                     .unwrap_or(0);
-                let end = offsets.get(range.end).map(|range| range.end).unwrap_or(0);
+                let end = range
+                    .end
+                    .checked_sub(1)
+                    .and_then(|end| offsets.get(end))
+                    .map(|range| range.end)
+                    .unwrap_or(0);
                 Column::Array {
                     array: Box::new(array.slice(start..end)),
                     offsets: offsets[range]

@@ -2,7 +2,7 @@ use std::fmt::{Display, Formatter};
 
 use crate::{
     expr::{Expr, Literal, AST},
-    types::{ArgType, DataType, ValueType},
+    types::{DataType, ValueType},
     values::{Value, ValueRef},
 };
 

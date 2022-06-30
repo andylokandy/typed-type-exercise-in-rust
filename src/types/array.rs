@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, ops::Range, sync::Arc};
+use std::{marker::PhantomData, ops::Range};
 
 use crate::values::{Column, Scalar};
 
@@ -140,8 +140,15 @@ impl<T: ArgType + ColumnViewer + ColumnBuilder> ColumnBuilder for ArrayType<T> {
 
     fn append_column(
         (col, mut offsets): Self::Column,
-        (other_col, mut other_offsets): Self::Column,
+        (other_col, other_offsets): Self::Column,
     ) -> Self::Column {
-        todo!()
+        let end = offsets.iter().map(|range| range.end).max().unwrap_or(0);
+        offsets.extend(
+            other_offsets
+                .iter()
+                .map(|range| range.start + end..range.end + end),
+        );
+        let col = T::append_column(col, other_col);
+        (col, offsets)
     }
 }

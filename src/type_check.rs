@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
     expr::{Expr, Literal, AST},
     function::{FunctionRegistry, FunctionSignature},
-    types::{DataType, GenericMap},
+    types::DataType,
 };
 
 pub fn check(ast: &AST, fn_registry: &FunctionRegistry) -> Option<(Expr, DataType)> {

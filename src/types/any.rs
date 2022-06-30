@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::values::{Column, Scalar};
 
 use super::ValueType;

@@ -1,8 +1,8 @@
-use std::{ops::Range, sync::Arc};
+use std::ops::Range;
 
 use crate::values::{Column, Scalar};
 
-use super::{any::AnyType, ArgType, ColumnBuilder, ColumnViewer, DataType, GenericMap, ValueType};
+use super::{ArgType, ColumnBuilder, ColumnViewer, DataType, GenericMap, ValueType};
 
 pub struct BooleanType;
 

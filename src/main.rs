@@ -14,7 +14,7 @@ use crate::types::DataType;
 use crate::types::*;
 use crate::types::{ArgType, ArrayType, Int16Type};
 use crate::values::Column;
-use crate::values::{Scalar, Value, ValueRef};
+use crate::values::{Scalar, Value};
 
 pub mod display;
 pub mod expr;
@@ -158,63 +158,60 @@ fn main() {
         .collect(),
     );
 
-    // run_ast(
-    //     &AST::FunctionCall {
-    //         name: "get".to_string(),
-    //         args: vec![
-    //             AST::ColumnRef {
-    //                 name: "array".to_string(),
-    //                 data_type: DataType::Array(Box::new(DataType::Array(Box::new(
-    //                     DataType::Int16,
-    //                 )))),
-    //             },
-    //             AST::ColumnRef {
-    //                 name: "idx".to_string(),
-    //                 data_type: DataType::UInt8,
-    //             },
-    //         ],
-    //         params: vec![],
-    //     },
-    //     [
-    //         (
-    //             "array".to_string(),
-    //             Column::Array {
-    //                 array: Box::new(Column::Array {
-    //                     array: Box::new(Column::Array {
-    //                         array: Box::new(Column::Int16((0..100).collect())),
-    //                         offsets: vec![
-    //                             0..5,
-    //                             5..10,
-    //                             10..15,
-    //                             15..20,
-    //                             20..25,
-    //                             25..30,
-    //                             30..35,
-    //                             35..40,
-    //                             40..45,
-    //                             45..50,
-    //                             50..55,
-    //                             55..60,
-    //                             60..65,
-    //                             65..70,
-    //                             70..75,
-    //                             75..80,
-    //                             80..85,
-    //                             85..90,
-    //                             90..95,
-    //                             95..100,
-    //                         ],
-    //                     }),
-    //                     offsets: vec![],
-    //                 }),
-    //                 offsets: vec![0..5, 5..10, 10..15, 15..20],
-    //             },
-    //         ),
-    //         ("idx".to_string(), Column::UInt8(vec![0, 1, 2, 3])),
-    //     ]
-    //     .into_iter()
-    //     .collect(),
-    // );
+    run_ast(
+        &AST::FunctionCall {
+            name: "get".to_string(),
+            args: vec![
+                AST::ColumnRef {
+                    name: "array".to_string(),
+                    data_type: DataType::Array(Box::new(DataType::Array(Box::new(
+                        DataType::Int16,
+                    )))),
+                },
+                AST::ColumnRef {
+                    name: "idx".to_string(),
+                    data_type: DataType::UInt8,
+                },
+            ],
+            params: vec![],
+        },
+        [
+            (
+                "array".to_string(),
+                Column::Array {
+                    array: Box::new(Column::Array {
+                        array: Box::new(Column::Int16((0..100).collect())),
+                        offsets: vec![
+                            0..5,
+                            5..10,
+                            10..15,
+                            15..20,
+                            20..25,
+                            25..30,
+                            30..35,
+                            35..40,
+                            40..45,
+                            45..50,
+                            50..55,
+                            55..60,
+                            60..65,
+                            65..70,
+                            70..75,
+                            75..80,
+                            80..85,
+                            85..90,
+                            90..95,
+                            95..100,
+                        ],
+                    }),
+                    offsets: vec![0..4, 4..8, 8..12, 12..16, 16..20],
+                },
+            ),
+            ("idx".to_string(), Column::UInt8(vec![0, 1, 2])),
+        ]
+        .into_iter()
+        .collect(),
+    );
 }
 
 fn builtin_functions() -> FunctionRegistry {
@@ -259,20 +256,16 @@ fn builtin_functions() -> FunctionRegistry {
             }),
         }))
     });
-    // registry.register_function_factory("array", |_, args_len| {
-    //     Some(Arc::new(Function {
-    //         signature: FunctionSignature {
-    //             name: "array",
-    //             args_type: vec![DataType::Generic(0); args_len],
-    //             return_type: DataType::Generic(0),
-    //         },
-    //         eval: Box::new(|args, generics| match generics[&0] {
-    //             DataType::Boolean => create_array_scalar::<BooleanType>(args),
-    //             DataType::Int16 => create_array_scalar::<Int16Type>(args),
-    //             _ => unimplemented!(),
-    //         }),
-    //     }))
-    // });
+    registry.register_function_factory("array", |_, args_len| {
+        Some(Arc::new(Function {
+            signature: FunctionSignature {
+                name: "array",
+                args_type: vec![DataType::Generic(0); args_len],
+                return_type: DataType::Generic(0),
+            },
+            eval: Box::new(|_args, _generics| todo!()),
+        }))
+    });
     registry.register_2_arg::<ArrayType<GenericType<0>>, Int16Type, GenericType<0>, _>(
         "get",
         |array, idx| array.index(*idx as usize),

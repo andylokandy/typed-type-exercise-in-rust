@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     function::{Function, FunctionID},
-    types::{DataType, GenericMap},
+    types::DataType,
 };
 
 #[derive(Debug, Clone)]
