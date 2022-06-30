@@ -2,7 +2,7 @@ use std::{ops::Range, sync::Arc};
 
 use crate::values::{Column, Scalar};
 
-use super::{ArgType, ColumnBuilder, ColumnViewer, DataType, ValueType};
+use super::{ArgType, ColumnBuilder, ColumnViewer, DataType, GenericMap, ValueType};
 
 pub struct Int16Type;
 
@@ -60,29 +60,37 @@ impl ArgType for Int16Type {
 impl ColumnViewer for Int16Type {
     type ColumnIterator<'a> = std::slice::Iter<'a, i16>;
 
-    fn scalar_borrow_to_ref<'a>(scalar: &'a Self::ScalarBorrow<'a>) -> Self::ScalarRef<'a> {
-        *scalar
-    }
-
     fn column_len<'a>(col: Self::ColumnRef<'a>) -> usize {
         col.len()
     }
 
-    fn index_column<'a>(col: Self::ColumnRef<'a>, index: usize) -> Self::ScalarRef<'a> {
+    fn index_column<'a>(col: Self::ColumnRef<'a>, index: usize) -> Self::ScalarBorrow<'a> {
         &col[index]
     }
 
-    fn slice_column<'a>(col: Self::ColumnRef<'a>, range: Range<usize>) -> Self::ColumnRef<'a> {
+    fn slice_column<'a>(col: Self::ColumnRef<'a>, range: Range<usize>) -> Self::ColumnBorrow<'a> {
         &col[range]
     }
 
     fn iter_column<'a>(col: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a> {
         col.iter()
     }
+
+    fn scalar_borrow_to_ref<'a: 'b, 'b>(scalar: &'b Self::ScalarBorrow<'a>) -> Self::ScalarRef<'a> {
+        *scalar
+    }
+
+    fn column_borrow_to_ref<'a: 'b, 'b>(col: &'b Self::ColumnBorrow<'a>) -> Self::ColumnRef<'b> {
+        *col
+    }
+
+    fn column_covariance<'a: 'b, 'b>(col: &'b Self::ColumnRef<'a>) -> Self::ColumnRef<'b> {
+        col
+    }
 }
 
 impl ColumnBuilder for Int16Type {
-    fn empty_column(capacity: usize) -> Self::Column {
+    fn create_column(capacity: usize, _: &GenericMap) -> Self::Column {
         Vec::with_capacity(capacity)
     }
 
@@ -96,7 +104,7 @@ impl ColumnBuilder for Int16Type {
         col
     }
 
-    fn column_from_iter(iter: impl Iterator<Item = Self::Scalar>) -> Self::Column {
+    fn column_from_iter(iter: impl Iterator<Item = Self::Scalar>, _: &GenericMap) -> Self::Column {
         iter.collect()
     }
 }

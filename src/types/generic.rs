@@ -2,7 +2,10 @@ use std::{marker::PhantomData, ops::Range, sync::Arc};
 
 use crate::values::{Column, ColumnIterator, Scalar};
 
-use super::{ArgType, ColumnViewer, DataType, ValueType};
+use super::{
+    array::ArrayType, boolean::BooleanType, nullable::NullableType, ArgType, ColumnBuilder,
+    ColumnViewer, DataType, GenericMap, Int16Type, ValueType,
+};
 
 pub struct GenericType<const INDEX: usize>;
 
@@ -53,11 +56,8 @@ impl<const INDEX: usize> ArgType for GenericType<INDEX> {
 
 impl<const INDEX: usize> ColumnViewer for GenericType<INDEX> {
     type ScalarBorrow<'a> = Self::Scalar;
+    type ColumnBorrow<'a> = Self::Column;
     type ColumnIterator<'a> = ColumnIterator<'a>;
-
-    fn scalar_borrow_to_ref<'a>(scalar: &'a Self::ScalarBorrow<'a>) -> Self::ScalarRef<'a> {
-        scalar
-    }
 
     fn column_len<'a>(col: Self::ColumnRef<'a>) -> usize {
         col.len()
@@ -67,20 +67,49 @@ impl<const INDEX: usize> ColumnViewer for GenericType<INDEX> {
         col.index(index)
     }
 
-    fn slice_column<'a>(col: Self::ColumnRef<'a>, range: Range<usize>) -> Self::ColumnRef<'a> {
-        &col.slice(range)
+    fn slice_column<'a>(col: Self::ColumnRef<'a>, range: Range<usize>) -> Self::ColumnBorrow<'a> {
+        col.slice(range)
     }
 
     fn iter_column<'a>(col: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a> {
         col.iter()
     }
+
+    fn scalar_borrow_to_ref<'a: 'b, 'b>(scalar: &'b Self::ScalarBorrow<'a>) -> Self::ScalarRef<'b> {
+        scalar
+    }
+
+    fn column_borrow_to_ref<'a: 'b, 'b>(col: &'b Self::ColumnBorrow<'a>) -> Self::ColumnRef<'b> {
+        col
+    }
+
+    fn column_covariance<'a: 'b, 'b>(col: &'b Self::ColumnRef<'a>) -> Self::ColumnRef<'b> {
+        *col
+    }
 }
 
 impl<const INDEX: usize> ColumnBuilder for GenericType<INDEX> {
-    fn empty_column(capacity: usize) -> Self::Column {
-        Vec::with_capacity(capacity)
+    fn create_column(capacity: usize, generics: &GenericMap) -> Self::Column {
+        match &generics[INDEX] {
+            DataType::Boolean => {
+                BooleanType::upcast_column(BooleanType::create_column(capacity, generics))
+            }
+            DataType::Int16 => {
+                Int16Type::upcast_column(Int16Type::create_column(capacity, generics))
+            }
+            DataType::Nullable(box ty) => NullableType::<GenericType<0>>::upcast_column(
+                NullableType::<GenericType<0>>::create_column(capacity, &[ty.clone()]),
+            ),
+            DataType::Array(box ty) => {
+                ArrayType::<GenericType<0>>::upcast_column(
+                    ArrayType::<GenericType<0>>::create_column(capacity, &[ty.clone()]),
+                )
+            }
+            ty => todo!("{ty}"),
+        }
     }
 
+    // TODO: use static dispatch
     fn push_column(mut col: Self::Column, item: Self::Scalar) -> Self::Column {
         col.push(item);
         col
@@ -89,9 +118,5 @@ impl<const INDEX: usize> ColumnBuilder for GenericType<INDEX> {
     fn append_column(mut col: Self::Column, mut other: Self::Column) -> Self::Column {
         col.append(&mut other);
         col
-    }
-
-    fn column_from_iter(iter: impl Iterator<Item = Self::Scalar>) -> Self::Column {
-        iter.collect()
     }
 }

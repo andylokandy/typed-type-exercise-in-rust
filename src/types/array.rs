@@ -2,7 +2,7 @@ use std::{marker::PhantomData, ops::Range, sync::Arc};
 
 use crate::values::{Column, Scalar};
 
-use super::{ArgType, ColumnBuilder, ColumnViewer, DataType, ValueType};
+use super::{ArgType, ColumnBuilder, ColumnViewer, DataType, GenericMap, ValueType};
 
 pub struct ArrayType<T: ArgType>(PhantomData<T>);
 
@@ -61,24 +61,25 @@ impl<T: ArgType> ArgType for ArrayType<T> {
 }
 
 impl<T: ArgType + ColumnViewer> ColumnViewer for ArrayType<T> {
+    type ScalarBorrow<'a> = T::ColumnBorrow<'a>;
+    type ColumnBorrow<'a> = (T::ColumnRef<'a>, &'a [Range<usize>]);
     type ColumnIterator<'a> = ArrayIterator<'a, T>;
-
-    fn scalar_borrow_to_ref<'a>(scalar: &'a Self::ScalarBorrow<'a>) -> Self::ScalarRef<'a> {
-        *scalar
-    }
 
     fn column_len<'a>((_, offsets): Self::ColumnRef<'a>) -> usize {
         offsets.len()
     }
 
-    fn index_column<'a>((col, offsets): Self::ColumnRef<'a>, index: usize) -> Self::ScalarRef<'a> {
+    fn index_column<'a>(
+        (col, offsets): Self::ColumnRef<'a>,
+        index: usize,
+    ) -> Self::ScalarBorrow<'a> {
         T::slice_column(col, offsets[index].clone())
     }
 
     fn slice_column<'a>(
         (col, offsets): Self::ColumnRef<'a>,
         range: Range<usize>,
-    ) -> Self::ColumnRef<'a> {
+    ) -> Self::ColumnBorrow<'a> {
         (col, &offsets[range])
     }
 
@@ -88,6 +89,22 @@ impl<T: ArgType + ColumnViewer> ColumnViewer for ArrayType<T> {
             offsets: offsets.iter(),
         }
     }
+
+    fn scalar_borrow_to_ref<'a: 'b, 'b>(scalar: &'b Self::ScalarBorrow<'a>) -> Self::ScalarRef<'b> {
+        T::column_borrow_to_ref(scalar)
+    }
+
+    fn column_borrow_to_ref<'a: 'b, 'b>(
+        (col, offsets): &'b Self::ColumnBorrow<'a>,
+    ) -> Self::ColumnRef<'b> {
+        (T::column_covariance(col), offsets)
+    }
+
+    fn column_covariance<'a: 'b, 'b>(
+        (col, offsets): &'b Self::ColumnRef<'a>,
+    ) -> Self::ColumnRef<'b> {
+        (T::column_covariance(col), offsets)
+    }
 }
 
 pub struct ArrayIterator<'a, T: ColumnViewer> {
@@ -96,7 +113,7 @@ pub struct ArrayIterator<'a, T: ColumnViewer> {
 }
 
 impl<'a, T: ColumnViewer> Iterator for ArrayIterator<'a, T> {
-    type Item = T::ColumnRef<'a>;
+    type Item = T::ColumnBorrow<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.offsets
@@ -106,8 +123,11 @@ impl<'a, T: ColumnViewer> Iterator for ArrayIterator<'a, T> {
 }
 
 impl<T: ArgType + ColumnViewer + ColumnBuilder> ColumnBuilder for ArrayType<T> {
-    fn empty_column(capacity: usize) -> Self::Column {
-        (T::empty_column(capacity), Vec::with_capacity(capacity))
+    fn create_column(capacity: usize, generics: &GenericMap) -> Self::Column {
+        (
+            T::create_column(capacity, generics),
+            Vec::with_capacity(capacity),
+        )
     }
 
     fn push_column((col, mut offsets): Self::Column, item: Self::Scalar) -> Self::Column {

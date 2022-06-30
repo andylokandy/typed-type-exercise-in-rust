@@ -2,7 +2,7 @@ use std::{marker::PhantomData, ops::Range, sync::Arc};
 
 use crate::values::{Column, Scalar};
 
-use super::{ArgType, ColumnBuilder, ColumnViewer, DataType, ValueType};
+use super::{ArgType, ColumnBuilder, ColumnViewer, DataType, GenericMap, ValueType};
 
 pub struct NullableType<T: ValueType>(PhantomData<T>);
 
@@ -76,11 +76,8 @@ where
     T::Scalar: Default,
 {
     type ScalarBorrow<'a> = Option<T::ScalarBorrow<'a>>;
+    type ColumnBorrow<'a> = (T::ColumnBorrow<'a>, &'a [bool]);
     type ColumnIterator<'a> = NullableIterator<'a, T>;
-
-    fn scalar_borrow_to_ref<'a>(scalar: &'a Self::ScalarBorrow<'a>) -> Self::ScalarRef<'a> {
-        scalar.as_ref().map(T::scalar_borrow_to_ref)
-    }
 
     fn column_len<'a>((_, nulls): Self::ColumnRef<'a>) -> usize {
         nulls.len()
@@ -98,8 +95,8 @@ where
     fn slice_column<'a>(
         (col, nulls): Self::ColumnRef<'a>,
         range: Range<usize>,
-    ) -> Self::ColumnRef<'a> {
-        (T::slice_column(col, range.clone()), &nulls[range])
+    ) -> Self::ColumnBorrow<'a> {
+        (T::slice_column(col, range.clone()), nulls)
     }
 
     fn iter_column<'a>((col, nulls): Self::ColumnRef<'a>) -> Self::ColumnIterator<'a> {
@@ -107,6 +104,20 @@ where
             iter: T::iter_column(col),
             nulls: nulls.iter(),
         }
+    }
+
+    fn scalar_borrow_to_ref<'a: 'b, 'b>(scalar: &'b Self::ScalarBorrow<'a>) -> Self::ScalarRef<'b> {
+        scalar.as_ref().map(T::scalar_borrow_to_ref)
+    }
+
+    fn column_borrow_to_ref<'a: 'b, 'b>(
+        (col, nulls): &'b Self::ColumnBorrow<'a>,
+    ) -> Self::ColumnRef<'b> {
+        (T::column_borrow_to_ref(col), nulls)
+    }
+
+    fn column_covariance<'a: 'b, 'b>((col, nulls): &'b Self::ColumnRef<'a>) -> Self::ColumnRef<'b> {
+        (T::column_covariance(col), nulls)
     }
 }
 
@@ -135,8 +146,11 @@ impl<T: ColumnBuilder> ColumnBuilder for NullableType<T>
 where
     T::Scalar: Default,
 {
-    fn empty_column(capacity: usize) -> Self::Column {
-        (T::empty_column(capacity), Vec::with_capacity(capacity))
+    fn create_column(capacity: usize, generics: &GenericMap) -> Self::Column {
+        (
+            T::create_column(capacity, generics),
+            Vec::with_capacity(capacity),
+        )
     }
 
     fn push_column((mut col, mut nulls): Self::Column, item: Self::Scalar) -> Self::Column {

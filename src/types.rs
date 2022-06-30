@@ -22,11 +22,12 @@ use std::{
 use enum_as_inner::EnumAsInner;
 
 use crate::{
+    type_check::Subsitution,
     values::{Column, Scalar},
     values::{Value, ValueRef},
 };
 
-pub type GenericMap = HashMap<usize, DataType>;
+pub type GenericMap<'a> = [DataType];
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumAsInner)]
 pub enum DataType {
@@ -42,6 +43,23 @@ pub enum DataType {
     Array(Box<DataType>),
     Generic(usize),
 }
+
+// pub enum GenericMap {
+//     Subsitution(Subsitution),
+//     // TODO: use SmallVec
+//     Static(Vec<DataType>),
+// }
+
+// impl Index<usize> for GenericMap {
+//     type Output = DataType;
+
+//     fn index(&self, index: usize) -> &Self::Output {
+//         match self {
+//             GenericMap::Subsitution(Subsitution(map)) => &map[&index],
+//             GenericMap::Static(types) => &types[index],
+//         }
+//     }
+// }
 
 pub trait ValueType: Sized + 'static {
     type Scalar: Debug;
@@ -79,22 +97,29 @@ pub trait ArgType: ValueType {
 
 pub trait ColumnViewer: ValueType {
     type ScalarBorrow<'a> = Self::ScalarRef<'a>;
+    type ColumnBorrow<'a> = Self::ColumnRef<'a>;
     type ColumnIterator<'a>: Iterator<Item = Self::ScalarBorrow<'a>>;
 
-    fn scalar_borrow_to_ref<'a>(scalar: &'a Self::ScalarBorrow<'a>) -> Self::ScalarRef<'a>;
     fn column_len<'a>(col: Self::ColumnRef<'a>) -> usize;
     fn index_column<'a>(col: Self::ColumnRef<'a>, index: usize) -> Self::ScalarBorrow<'a>;
-    fn slice_column<'a>(col: Self::ColumnRef<'a>, range: Range<usize>) -> Self::ColumnRef<'a>;
+    fn slice_column<'a>(col: Self::ColumnRef<'a>, range: Range<usize>) -> Self::ColumnBorrow<'a>;
     fn iter_column<'a>(col: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a>;
+
+    fn scalar_borrow_to_ref<'a: 'b, 'b>(scalar: &'b Self::ScalarBorrow<'a>) -> Self::ScalarRef<'b>;
+    fn column_borrow_to_ref<'a: 'b, 'b>(col: &'b Self::ColumnBorrow<'a>) -> Self::ColumnRef<'b>;
+    fn column_covariance<'a: 'b, 'b>(col: &'b Self::ColumnRef<'a>) -> Self::ColumnRef<'b>;
 }
 
 pub trait ColumnBuilder: ValueType {
-    fn empty_column(capacity: usize) -> Self::Column;
+    fn create_column(capacity: usize, generics: &GenericMap) -> Self::Column;
     fn push_column(col: Self::Column, item: Self::Scalar) -> Self::Column;
     fn append_column(col: Self::Column, other: Self::Column) -> Self::Column;
 
-    fn column_from_iter(iter: impl Iterator<Item = Self::Scalar>) -> Self::Column {
-        let mut col = Self::empty_column(iter.size_hint().0);
+    fn column_from_iter(
+        iter: impl Iterator<Item = Self::Scalar>,
+        generics: &GenericMap,
+    ) -> Self::Column {
+        let mut col = Self::create_column(iter.size_hint().0, generics);
         for item in iter {
             col = Self::push_column(col, item);
         }

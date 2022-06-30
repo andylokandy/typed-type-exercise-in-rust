@@ -73,7 +73,12 @@ impl Display for Expr {
         match self {
             Expr::Literal(literal) => write!(f, "{literal}"),
             Expr::ColumnRef { name, .. } => write!(f, "{name}"),
-            Expr::FunctionCall { function, args, .. } => {
+            Expr::FunctionCall {
+                function,
+                args,
+                generics,
+                ..
+            } => {
                 write!(f, "{}<", function.signature.name)?;
                 for (i, ty) in function.signature.args_type.iter().enumerate() {
                     if i > 0 {
@@ -81,7 +86,18 @@ impl Display for Expr {
                     }
                     write!(f, "{ty}")?;
                 }
-                write!(f, ">(")?;
+                write!(f, ">")?;
+                if !generics.is_empty() {
+                    write!(f, "<")?;
+                    for (i, ty) in generics.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "Generic<{i}>={ty}")?;
+                    }
+                    write!(f, ">")?;
+                }
+                write!(f, "(")?;
                 for (i, arg) in args.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;

@@ -32,7 +32,7 @@ pub enum Expr {
     FunctionCall {
         id: FunctionID,
         function: Arc<Function>,
-        generics: GenericMap,
+        generics: Vec<DataType>,
         args: Vec<Expr>,
     },
 }

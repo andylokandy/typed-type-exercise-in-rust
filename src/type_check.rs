@@ -62,46 +62,8 @@ pub fn check_function(
     None
 }
 
-pub fn try_check_function<'a, 'b>(
-    args: &[(Expr, DataType)],
-    sig: &FunctionSignature,
-) -> Option<(Vec<Expr>, DataType, GenericMap)> {
-    assert_eq!(args.len(), sig.args_type.len());
-
-    let substs = args
-        .iter()
-        .map(|(_, ty)| ty)
-        .zip(&sig.args_type)
-        .map(|(src_ty, dest_ty)| unify(src_ty, dest_ty))
-        .collect::<Option<Vec<_>>>()?;
-    let subst = substs
-        .into_iter()
-        .try_reduce(|subst1, subst2| subst1.merge(subst2))?
-        .unwrap_or(Subsitution::empty());
-
-    let checked_args = args
-        .iter()
-        .zip(&sig.args_type)
-        .map(|((arg, arg_type), sig_type)| {
-            let sig_type = subst.apply(sig_type.clone())?;
-            Some(if *arg_type == sig_type {
-                arg.clone()
-            } else {
-                Expr::Cast {
-                    expr: Box::new(arg.clone()),
-                    dest_type: sig_type,
-                }
-            })
-        })
-        .collect::<Option<Vec<_>>>()?;
-
-    let return_type = subst.apply(sig.return_type.clone())?;
-
-    Some((checked_args, return_type, subst.0))
-}
-
 #[derive(Debug)]
-pub struct Subsitution(pub GenericMap);
+pub struct Subsitution(pub HashMap<usize, DataType>);
 
 impl Subsitution {
     pub fn empty() -> Self {
@@ -135,6 +97,52 @@ impl Subsitution {
             ty => Some(ty),
         }
     }
+}
+
+pub fn try_check_function<'a, 'b>(
+    args: &[(Expr, DataType)],
+    sig: &FunctionSignature,
+) -> Option<(Vec<Expr>, DataType, Vec<DataType>)> {
+    assert_eq!(args.len(), sig.args_type.len());
+
+    let substs = args
+        .iter()
+        .map(|(_, ty)| ty)
+        .zip(&sig.args_type)
+        .map(|(src_ty, dest_ty)| unify(src_ty, dest_ty))
+        .collect::<Option<Vec<_>>>()?;
+    let subst = substs
+        .into_iter()
+        .try_reduce(|subst1, subst2| subst1.merge(subst2))?
+        .unwrap_or(Subsitution::empty());
+
+    let checked_args = args
+        .iter()
+        .zip(&sig.args_type)
+        .map(|((arg, arg_type), sig_type)| {
+            let sig_type = subst.apply(sig_type.clone())?;
+            Some(if *arg_type == sig_type {
+                arg.clone()
+            } else {
+                Expr::Cast {
+                    expr: Box::new(arg.clone()),
+                    dest_type: sig_type,
+                }
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+
+    let return_type = subst.apply(sig.return_type.clone())?;
+
+    let max_generic_idx = subst.0.keys().cloned().max().unwrap_or(0);
+    let generics = (0..max_generic_idx + 1)
+        .map(|idx| match subst.0.get(&idx) {
+            Some(ty) => ty.clone(),
+            None => DataType::Generic(idx),
+        })
+        .collect();
+
+    Some((checked_args, return_type, generics))
 }
 
 pub fn unify(src_ty: &DataType, dest_ty: &DataType) -> Option<Subsitution> {
