@@ -268,7 +268,7 @@ fn builtin_functions() -> FunctionRegistry {
     });
     registry.register_2_arg::<ArrayType<GenericType<0>>, Int16Type, GenericType<0>, _>(
         "get",
-        |array, idx| array.index(*idx as usize),
+        |array, idx| array.index(*idx as usize).to_owned(),
     );
 
     registry

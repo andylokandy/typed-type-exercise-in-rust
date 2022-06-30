@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use crate::values::{Column, ColumnIterator, Scalar};
+use crate::values::{Column, ColumnIterator, ColumnRef, Scalar, ScalarRef};
 
 use super::{
     array::ArrayType, boolean::BooleanType, nullable::NullableType, ArgType, ColumnBuilder,
@@ -11,24 +11,24 @@ pub struct GenericType<const INDEX: usize>;
 
 impl<const INDEX: usize> ValueType for GenericType<INDEX> {
     type Scalar = Scalar;
-    type ScalarRef<'a> = &'a Scalar;
+    type ScalarRef<'a> = ScalarRef<'a>;
     type Column = Column;
-    type ColumnRef<'a> = &'a Column;
+    type ColumnRef<'a> = ColumnRef<'a>;
 
     fn to_owned_scalar<'a>(scalar: Self::ScalarRef<'a>) -> Self::Scalar {
-        scalar.clone()
+        scalar.to_owned()
     }
 
     fn to_owned_column<'a>(col: Self::ColumnRef<'a>) -> Self::Column {
-        col.clone()
+        col.to_owned()
     }
 
     fn to_scalar_ref<'a>(scalar: &'a Self::Scalar) -> Self::ScalarRef<'a> {
-        &scalar
+        scalar.as_ref()
     }
 
     fn to_column_ref<'a>(col: &'a Self::Column) -> Self::ColumnRef<'a> {
-        &col
+        col.slice_all()
     }
 }
 
@@ -38,11 +38,11 @@ impl<const INDEX: usize> ArgType for GenericType<INDEX> {
     }
 
     fn try_downcast_scalar<'a>(scalar: &'a Scalar) -> Option<Self::ScalarRef<'a>> {
-        Some(scalar)
+        Some(scalar.as_ref())
     }
 
     fn try_downcast_column<'a>(col: &'a Column) -> Option<Self::ColumnRef<'a>> {
-        Some(col)
+        Some(col.slice_all())
     }
 
     fn upcast_scalar(scalar: Self::Scalar) -> Scalar {
@@ -55,19 +55,17 @@ impl<const INDEX: usize> ArgType for GenericType<INDEX> {
 }
 
 impl<const INDEX: usize> ColumnViewer for GenericType<INDEX> {
-    type ScalarBorrow<'a> = Self::Scalar;
-    type ColumnBorrow<'a> = Self::Column;
     type ColumnIterator<'a> = ColumnIterator<'a>;
 
     fn column_len<'a>(col: Self::ColumnRef<'a>) -> usize {
         col.len()
     }
 
-    fn index_column<'a>(col: Self::ColumnRef<'a>, index: usize) -> Self::ScalarBorrow<'a> {
+    fn index_column<'a>(col: Self::ColumnRef<'a>, index: usize) -> Self::ScalarRef<'a> {
         col.index(index)
     }
 
-    fn slice_column<'a>(col: Self::ColumnRef<'a>, range: Range<usize>) -> Self::ColumnBorrow<'a> {
+    fn slice_column<'a>(col: Self::ColumnRef<'a>, range: Range<usize>) -> Self::ColumnRef<'a> {
         col.slice(range)
     }
 
@@ -75,16 +73,8 @@ impl<const INDEX: usize> ColumnViewer for GenericType<INDEX> {
         col.iter()
     }
 
-    fn scalar_borrow_to_ref<'a: 'b, 'b>(scalar: &'b Self::ScalarBorrow<'a>) -> Self::ScalarRef<'b> {
-        scalar
-    }
-
-    fn column_borrow_to_ref<'a: 'b, 'b>(col: &'b Self::ColumnBorrow<'a>) -> Self::ColumnRef<'b> {
-        col
-    }
-
     fn column_covariance<'a: 'b, 'b>(col: &'b Self::ColumnRef<'a>) -> Self::ColumnRef<'b> {
-        *col
+        col.clone()
     }
 }
 
@@ -109,7 +99,6 @@ impl<const INDEX: usize> ColumnBuilder for GenericType<INDEX> {
         }
     }
 
-    // TODO: use static dispatch
     fn push_column(mut col: Self::Column, item: Self::Scalar) -> Self::Column {
         col.push(item);
         col

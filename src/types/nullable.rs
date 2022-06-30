@@ -75,15 +75,13 @@ impl<T: ColumnViewer> ColumnViewer for NullableType<T>
 where
     T::Scalar: Default,
 {
-    type ScalarBorrow<'a> = Option<T::ScalarBorrow<'a>>;
-    type ColumnBorrow<'a> = (T::ColumnBorrow<'a>, &'a [bool]);
     type ColumnIterator<'a> = NullableIterator<'a, T>;
 
     fn column_len<'a>((_, nulls): Self::ColumnRef<'a>) -> usize {
         nulls.len()
     }
 
-    fn index_column<'a>((col, nulls): Self::ColumnRef<'a>, index: usize) -> Self::ScalarBorrow<'a> {
+    fn index_column<'a>((col, nulls): Self::ColumnRef<'a>, index: usize) -> Self::ScalarRef<'a> {
         let scalar = T::index_column(col, index);
         if nulls[index] {
             Some(scalar)
@@ -95,7 +93,7 @@ where
     fn slice_column<'a>(
         (col, nulls): Self::ColumnRef<'a>,
         range: Range<usize>,
-    ) -> Self::ColumnBorrow<'a> {
+    ) -> Self::ColumnRef<'a> {
         (T::slice_column(col, range.clone()), nulls)
     }
 
@@ -104,16 +102,6 @@ where
             iter: T::iter_column(col),
             nulls: nulls.iter(),
         }
-    }
-
-    fn scalar_borrow_to_ref<'a: 'b, 'b>(scalar: &'b Self::ScalarBorrow<'a>) -> Self::ScalarRef<'b> {
-        scalar.as_ref().map(T::scalar_borrow_to_ref)
-    }
-
-    fn column_borrow_to_ref<'a: 'b, 'b>(
-        (col, nulls): &'b Self::ColumnBorrow<'a>,
-    ) -> Self::ColumnRef<'b> {
-        (T::column_borrow_to_ref(col), nulls)
     }
 
     fn column_covariance<'a: 'b, 'b>((col, nulls): &'b Self::ColumnRef<'a>) -> Self::ColumnRef<'b> {
@@ -127,7 +115,7 @@ pub struct NullableIterator<'a, T: ColumnViewer> {
 }
 
 impl<'a, T: ColumnViewer> Iterator for NullableIterator<'a, T> {
-    type Item = Option<<T as ColumnViewer>::ScalarBorrow<'a>>;
+    type Item = Option<T::ScalarRef<'a>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().zip(self.nulls.next()).map(

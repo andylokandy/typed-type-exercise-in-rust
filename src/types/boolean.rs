@@ -76,14 +76,6 @@ impl ColumnViewer for BooleanType {
         col.iter()
     }
 
-    fn scalar_borrow_to_ref<'a: 'b, 'b>(scalar: &'b Self::ScalarBorrow<'a>) -> Self::ScalarRef<'b> {
-        *scalar
-    }
-
-    fn column_borrow_to_ref<'a: 'b, 'b>(col: &'b Self::ColumnBorrow<'a>) -> Self::ColumnRef<'b> {
-        *col
-    }
-
     fn column_covariance<'a: 'b, 'b>(col: &'b Self::ColumnRef<'a>) -> Self::ColumnRef<'b> {
         *col
     }

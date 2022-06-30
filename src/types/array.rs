@@ -61,25 +61,20 @@ impl<T: ArgType> ArgType for ArrayType<T> {
 }
 
 impl<T: ArgType + ColumnViewer> ColumnViewer for ArrayType<T> {
-    type ScalarBorrow<'a> = T::ColumnBorrow<'a>;
-    type ColumnBorrow<'a> = (T::ColumnRef<'a>, &'a [Range<usize>]);
     type ColumnIterator<'a> = ArrayIterator<'a, T>;
 
     fn column_len<'a>((_, offsets): Self::ColumnRef<'a>) -> usize {
         offsets.len()
     }
 
-    fn index_column<'a>(
-        (col, offsets): Self::ColumnRef<'a>,
-        index: usize,
-    ) -> Self::ScalarBorrow<'a> {
+    fn index_column<'a>((col, offsets): Self::ColumnRef<'a>, index: usize) -> Self::ScalarRef<'a> {
         T::slice_column(col, offsets[index].clone())
     }
 
     fn slice_column<'a>(
         (col, offsets): Self::ColumnRef<'a>,
         range: Range<usize>,
-    ) -> Self::ColumnBorrow<'a> {
+    ) -> Self::ColumnRef<'a> {
         (col, &offsets[range])
     }
 
@@ -88,16 +83,6 @@ impl<T: ArgType + ColumnViewer> ColumnViewer for ArrayType<T> {
             col,
             offsets: offsets.iter(),
         }
-    }
-
-    fn scalar_borrow_to_ref<'a: 'b, 'b>(scalar: &'b Self::ScalarBorrow<'a>) -> Self::ScalarRef<'b> {
-        T::column_borrow_to_ref(scalar)
-    }
-
-    fn column_borrow_to_ref<'a: 'b, 'b>(
-        (col, offsets): &'b Self::ColumnBorrow<'a>,
-    ) -> Self::ColumnRef<'b> {
-        (T::column_covariance(col), offsets)
     }
 
     fn column_covariance<'a: 'b, 'b>(
@@ -113,7 +98,7 @@ pub struct ArrayIterator<'a, T: ColumnViewer> {
 }
 
 impl<'a, T: ColumnViewer> Iterator for ArrayIterator<'a, T> {
-    type Item = T::ColumnBorrow<'a>;
+    type Item = T::ColumnRef<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.offsets

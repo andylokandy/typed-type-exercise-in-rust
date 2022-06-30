@@ -38,23 +38,6 @@ pub enum DataType {
     Generic(usize),
 }
 
-// pub enum GenericMap {
-//     Subsitution(Subsitution),
-//     // TODO: use SmallVec
-//     Static(Vec<DataType>),
-// }
-
-// impl Index<usize> for GenericMap {
-//     type Output = DataType;
-
-//     fn index(&self, index: usize) -> &Self::Output {
-//         match self {
-//             GenericMap::Subsitution(Subsitution(map)) => &map[&index],
-//             GenericMap::Static(types) => &types[index],
-//         }
-//     }
-// }
-
 pub trait ValueType: Sized + 'static {
     type Scalar: Debug;
     type ScalarRef<'a>: Debug + Clone;
@@ -90,17 +73,13 @@ pub trait ArgType: ValueType {
 }
 
 pub trait ColumnViewer: ValueType {
-    type ScalarBorrow<'a> = Self::ScalarRef<'a>;
-    type ColumnBorrow<'a> = Self::ColumnRef<'a>;
-    type ColumnIterator<'a>: Iterator<Item = Self::ScalarBorrow<'a>>;
+    type ColumnIterator<'a>: Iterator<Item = Self::ScalarRef<'a>>;
 
     fn column_len<'a>(col: Self::ColumnRef<'a>) -> usize;
-    fn index_column<'a>(col: Self::ColumnRef<'a>, index: usize) -> Self::ScalarBorrow<'a>;
-    fn slice_column<'a>(col: Self::ColumnRef<'a>, range: Range<usize>) -> Self::ColumnBorrow<'a>;
+    fn index_column<'a>(col: Self::ColumnRef<'a>, index: usize) -> Self::ScalarRef<'a>;
+    fn slice_column<'a>(col: Self::ColumnRef<'a>, range: Range<usize>) -> Self::ColumnRef<'a>;
     fn iter_column<'a>(col: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a>;
 
-    fn scalar_borrow_to_ref<'a: 'b, 'b>(scalar: &'b Self::ScalarBorrow<'a>) -> Self::ScalarRef<'b>;
-    fn column_borrow_to_ref<'a: 'b, 'b>(col: &'b Self::ColumnBorrow<'a>) -> Self::ColumnRef<'b>;
     fn column_covariance<'a: 'b, 'b>(col: &'b Self::ColumnRef<'a>) -> Self::ColumnRef<'b>;
 }
 
@@ -120,17 +99,3 @@ pub trait ColumnBuilder: ValueType {
         col
     }
 }
-
-// #[macro_export]
-// macro_rules! dispatch_data_type {
-//     ($ty:expr, $expr:expr) => {{
-//         match_template::match_template! {
-//             TYPE = [
-//                 Boolean => $crate::types::BooleanType,
-//             ],
-//             match $api_version {
-//                 $crate::types::DataType::TYPE => $e,
-//             }
-//         }
-//     }};
-// }

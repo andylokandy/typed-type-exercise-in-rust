@@ -268,7 +268,7 @@ pub fn vectorize_1_arg<'a, I1: ColumnViewer, O: ColumnBuilder>(
     match val {
         ValueRef::Scalar(val) => Value::Scalar(func(val)),
         ValueRef::Column(col) => {
-            let iter = I1::iter_column(col).map(|val| func(I1::scalar_borrow_to_ref(&val)));
+            let iter = I1::iter_column(col).map(|val| func(val));
             let col = O::column_from_iter(iter, generics);
             Value::Column(col)
         }
@@ -284,26 +284,19 @@ pub fn vectorize_2_arg<'a, 'b, I1: ColumnViewer, I2: ColumnViewer, O: ColumnBuil
     match (lhs, rhs) {
         (ValueRef::Scalar(lhs), ValueRef::Scalar(rhs)) => Value::Scalar(func(lhs, rhs)),
         (ValueRef::Scalar(lhs), ValueRef::Column(rhs)) => {
-            let iter =
-                I2::iter_column(rhs).map(|rhs| func(lhs.clone(), I2::scalar_borrow_to_ref(&rhs)));
+            let iter = I2::iter_column(rhs).map(|rhs| func(lhs.clone(), rhs));
             let col = O::column_from_iter(iter, generics);
             Value::Column(col)
         }
         (ValueRef::Column(lhs), ValueRef::Scalar(rhs)) => {
-            let iter =
-                I1::iter_column(lhs).map(|lhs| func(I1::scalar_borrow_to_ref(&lhs), rhs.clone()));
+            let iter = I1::iter_column(lhs).map(|lhs| func(lhs, rhs.clone()));
             let col = O::column_from_iter(iter, generics);
             Value::Column(col)
         }
         (ValueRef::Column(lhs), ValueRef::Column(rhs)) => {
             let iter = I1::iter_column(lhs)
                 .zip(I2::iter_column(rhs))
-                .map(|(lhs, rhs)| {
-                    func(
-                        I1::scalar_borrow_to_ref(&lhs),
-                        I2::scalar_borrow_to_ref(&rhs),
-                    )
-                });
+                .map(|(lhs, rhs)| func(lhs, rhs));
             let col = O::column_from_iter(iter, generics);
             Value::Column(col)
         }
@@ -323,7 +316,7 @@ where
         ValueRef::Scalar(None) => Value::Scalar(None),
         ValueRef::Scalar(Some(val)) => Value::Scalar(Some(func(val))),
         ValueRef::Column((col, nulls)) => {
-            let iter = I1::iter_column(col).map(|val| func(I1::scalar_borrow_to_ref(&val)));
+            let iter = I1::iter_column(col).map(|val| func(val));
             let col = O::column_from_iter(iter, generics);
             Value::Column((col, nulls.to_vec()))
         }
@@ -353,26 +346,19 @@ where
             Value::Scalar(Some(func(lhs, rhs)))
         }
         (ValueRef::Scalar(Some(lhs)), ValueRef::Column((rhs, rhs_nulls))) => {
-            let iter =
-                I2::iter_column(rhs).map(|rhs| func(lhs.clone(), I2::scalar_borrow_to_ref(&rhs)));
+            let iter = I2::iter_column(rhs).map(|rhs| func(lhs.clone(), rhs));
             let col = O::column_from_iter(iter, generics);
             Value::Column((col, rhs_nulls.to_vec()))
         }
         (ValueRef::Column((lhs, lhs_nulls)), ValueRef::Scalar(Some(rhs))) => {
-            let iter =
-                I1::iter_column(lhs).map(|lhs| func(I1::scalar_borrow_to_ref(&lhs), rhs.clone()));
+            let iter = I1::iter_column(lhs).map(|lhs| func(lhs, rhs.clone()));
             let col = O::column_from_iter(iter, generics);
             Value::Column((col, lhs_nulls.to_vec()))
         }
         (ValueRef::Column((lhs, lhs_nulls)), ValueRef::Column((rhs, rhs_nulls))) => {
             let iter = I1::iter_column(lhs)
                 .zip(I2::iter_column(rhs))
-                .map(|(lhs, rhs)| {
-                    func(
-                        I1::scalar_borrow_to_ref(&lhs),
-                        I2::scalar_borrow_to_ref(&rhs),
-                    )
-                });
+                .map(|(lhs, rhs)| func(lhs, rhs));
             let col = O::column_from_iter(iter, generics);
 
             let nulls = lhs_nulls
