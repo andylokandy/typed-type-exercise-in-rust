@@ -134,13 +134,20 @@ pub fn try_check_function<'a, 'b>(
 
     let return_type = subst.apply(sig.return_type.clone())?;
 
-    let max_generic_idx = subst.0.keys().cloned().max().unwrap_or(0);
-    let generics = (0..max_generic_idx + 1)
-        .map(|idx| match subst.0.get(&idx) {
-            Some(ty) => ty.clone(),
-            None => DataType::Generic(idx),
+    let generics = subst
+        .0
+        .keys()
+        .cloned()
+        .max()
+        .map(|max_generic_idx| {
+            (0..max_generic_idx + 1)
+                .map(|idx| match subst.0.get(&idx) {
+                    Some(ty) => ty.clone(),
+                    None => DataType::Generic(idx),
+                })
+                .collect()
         })
-        .collect();
+        .unwrap_or_default();
 
     Some((checked_args, return_type, generics))
 }

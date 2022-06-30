@@ -40,12 +40,12 @@ impl Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Literal::Null => write!(f, "NULL"),
-            Literal::Boolean(b) => write!(f, "{}", b),
-            Literal::UInt8(u) => write!(f, "{}", u),
-            Literal::UInt16(u) => write!(f, "{}", u),
-            Literal::Int8(i) => write!(f, "{}", i),
-            Literal::Int16(i) => write!(f, "{}", i),
-            Literal::String(s) => write!(f, "{}", s),
+            Literal::Boolean(val) => write!(f, "{val}::Boolean"),
+            Literal::UInt8(val) => write!(f, "{val}::UInt8"),
+            Literal::UInt16(val) => write!(f, "{val}::UInt16"),
+            Literal::Int8(val) => write!(f, "{val}::Int8"),
+            Literal::Int16(val) => write!(f, "{val}::Int16"),
+            Literal::String(val) => write!(f, "{val}::String"),
         }
     }
 }
@@ -63,7 +63,7 @@ impl Display for DataType {
             DataType::Nullable(inner) => write!(f, "Nullable<{inner}>"),
             DataType::EmptyArray => write!(f, "Array<?>"),
             DataType::Array(inner) => write!(f, "Array<{inner}>"),
-            DataType::Generic(index) => write!(f, "Generic<{index}>"),
+            DataType::Generic(index) => write!(f, "T{index}"),
         }
     }
 }
@@ -79,7 +79,18 @@ impl Display for Expr {
                 generics,
                 ..
             } => {
-                write!(f, "{}<", function.signature.name)?;
+                write!(f, "{}", function.signature.name)?;
+                if !generics.is_empty() {
+                    write!(f, "<")?;
+                    for (i, ty) in generics.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "T{i}={ty}")?;
+                    }
+                    write!(f, ">")?;
+                }
+                write!(f, "<")?;
                 for (i, ty) in function.signature.args_type.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
@@ -87,16 +98,6 @@ impl Display for Expr {
                     write!(f, "{ty}")?;
                 }
                 write!(f, ">")?;
-                if !generics.is_empty() {
-                    write!(f, "<")?;
-                    for (i, ty) in generics.iter().enumerate() {
-                        if i > 0 {
-                            write!(f, ", ")?;
-                        }
-                        write!(f, "Generic<{i}>={ty}")?;
-                    }
-                    write!(f, ">")?;
-                }
                 write!(f, "(")?;
                 for (i, arg) in args.iter().enumerate() {
                     if i > 0 {
@@ -107,7 +108,7 @@ impl Display for Expr {
                 write!(f, ")")
             }
             Expr::Cast { expr, dest_type } => {
-                write!(f, "cast<{dest_type}>({expr})")
+                write!(f, "cast<dest_type={dest_type}>({expr})")
             }
         }
     }

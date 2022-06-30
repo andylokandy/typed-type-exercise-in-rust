@@ -157,6 +157,64 @@ fn main() {
         .into_iter()
         .collect(),
     );
+
+    // run_ast(
+    //     &AST::FunctionCall {
+    //         name: "get".to_string(),
+    //         args: vec![
+    //             AST::ColumnRef {
+    //                 name: "array".to_string(),
+    //                 data_type: DataType::Array(Box::new(DataType::Array(Box::new(
+    //                     DataType::Int16,
+    //                 )))),
+    //             },
+    //             AST::ColumnRef {
+    //                 name: "idx".to_string(),
+    //                 data_type: DataType::UInt8,
+    //             },
+    //         ],
+    //         params: vec![],
+    //     },
+    //     [
+    //         (
+    //             "array".to_string(),
+    //             Column::Array {
+    //                 array: Box::new(Column::Array {
+    //                     array: Box::new(Column::Array {
+    //                         array: Box::new(Column::Int16((0..100).collect())),
+    //                         offsets: vec![
+    //                             0..5,
+    //                             5..10,
+    //                             10..15,
+    //                             15..20,
+    //                             20..25,
+    //                             25..30,
+    //                             30..35,
+    //                             35..40,
+    //                             40..45,
+    //                             45..50,
+    //                             50..55,
+    //                             55..60,
+    //                             60..65,
+    //                             65..70,
+    //                             70..75,
+    //                             75..80,
+    //                             80..85,
+    //                             85..90,
+    //                             90..95,
+    //                             95..100,
+    //                         ],
+    //                     }),
+    //                     offsets: vec![],
+    //                 }),
+    //                 offsets: vec![0..5, 5..10, 10..15, 15..20],
+    //             },
+    //         ),
+    //         ("idx".to_string(), Column::UInt8(vec![0, 1, 2, 3])),
+    //     ]
+    //     .into_iter()
+    //     .collect(),
+    // );
 }
 
 fn builtin_functions() -> FunctionRegistry {
