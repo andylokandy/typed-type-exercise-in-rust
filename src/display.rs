@@ -2,6 +2,7 @@ use std::fmt::{Display, Formatter};
 
 use crate::{
     expr::{Expr, Literal, AST},
+    property::ValueProperty,
     types::{DataType, ValueType},
     values::{Value, ValueRef},
 };
@@ -10,7 +11,11 @@ impl Display for AST {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AST::Literal(literal) => write!(f, "{literal}"),
-            AST::ColumnRef { name, data_type } => write!(f, "{name}::{data_type}"),
+            AST::ColumnRef {
+                name,
+                data_type,
+                property,
+            } => write!(f, "{name}::{data_type}{property}"),
             AST::FunctionCall { name, args, params } => {
                 write!(f, "{name}")?;
                 if !params.is_empty() {
@@ -68,6 +73,17 @@ impl Display for DataType {
     }
 }
 
+impl Display for ValueProperty {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        if self.not_null {
+            write!(f, "{{not_null}}")?;
+        } else {
+            write!(f, "{{}}")?;
+        }
+        Ok(())
+    }
+}
+
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -99,11 +115,11 @@ impl Display for Expr {
                 }
                 write!(f, ">")?;
                 write!(f, "(")?;
-                for (i, arg) in args.iter().enumerate() {
+                for (i, (arg, prop)) in args.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{arg}")?;
+                    write!(f, "{arg}{prop}")?;
                 }
                 write!(f, ")")
             }

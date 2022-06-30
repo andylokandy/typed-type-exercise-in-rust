@@ -15,14 +15,17 @@ impl Runtime {
     pub fn run(&self, expr: &Expr) -> Value<AnyType> {
         match expr {
             Expr::Literal(lit) => Value::Scalar(self.run_lit(lit)),
-            Expr::ColumnRef { name } => Value::Column(self.columns[name].clone()),
+            Expr::ColumnRef { name, .. } => Value::Column(self.columns[name].clone()),
             Expr::FunctionCall {
                 function,
                 args,
                 generics,
                 ..
             } => {
-                let cols = args.iter().map(|expr| self.run(expr)).collect::<Vec<_>>();
+                let cols = args
+                    .iter()
+                    .map(|(expr, _)| self.run(expr))
+                    .collect::<Vec<_>>();
                 let cols_ref = cols.iter().map(Value::as_ref).collect::<Vec<_>>();
                 (function.eval)(cols_ref.as_slice(), generics)
             }

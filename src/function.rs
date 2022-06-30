@@ -2,7 +2,9 @@ use std::{collections::HashMap, sync::Arc};
 
 use educe::Educe;
 
+use crate::property::FunctionPropertyBuilder;
 use crate::{
+    property::FunctionProperty,
     types::*,
     values::{Value, ValueRef},
 };
@@ -12,6 +14,7 @@ pub struct FunctionSignature {
     pub name: &'static str,
     pub args_type: Vec<DataType>,
     pub return_type: DataType,
+    pub property: FunctionProperty,
 }
 
 /// `FunctionID` is a unique identifier for a function. It's used to construct
@@ -32,22 +35,6 @@ pub struct Function {
     pub signature: FunctionSignature,
     #[educe(Debug(ignore))]
     pub eval: Box<dyn Fn(&[ValueRef<AnyType>], &GenericMap) -> Value<AnyType>>,
-}
-
-impl Function {
-    pub fn new_1_arg<I1: ArgType, O: ArgType, F>(name: &'static str, func: F) -> Function
-    where
-        F: Fn(ValueRef<I1>, &GenericMap) -> Value<O> + 'static,
-    {
-        Function {
-            signature: FunctionSignature {
-                name,
-                args_type: vec![I1::data_type()],
-                return_type: O::data_type(),
-            },
-            eval: Box::new(erase_function_generic_1_arg(func)),
-        }
-    }
 }
 
 #[derive(Default)]
@@ -105,6 +92,7 @@ impl FunctionRegistry {
     pub fn register_1_arg<I1: ArgType + ColumnViewer, O: ArgType + ColumnBuilder, F>(
         &mut self,
         name: &'static str,
+        property: FunctionPropertyBuilder,
         func: F,
     ) where
         I1::Scalar: Default,
@@ -122,18 +110,25 @@ impl FunctionRegistry {
             name
         );
 
-        self.register_1_arg_core::<I1, O, _>(name, move |val, generics| {
+        let property = property.preserve_not_null(true);
+
+        self.register_1_arg_core::<I1, O, _>(name, property.clone(), move |val, generics| {
             vectorize_1_arg(val, generics, func)
         });
 
         self.register_1_arg_core::<NullableType<I1>, NullableType<O>, _>(
             name,
+            property,
             move |val, generics| vectorize_passthrough_nullable_1_arg(val, generics, func),
         );
     }
 
-    pub fn register_1_arg_core<I1: ArgType, O: ArgType, F>(&mut self, name: &'static str, func: F)
-    where
+    pub fn register_1_arg_core<I1: ArgType, O: ArgType, F>(
+        &mut self,
+        name: &'static str,
+        property: FunctionPropertyBuilder,
+        func: F,
+    ) where
         F: Fn(ValueRef<I1>, &GenericMap) -> Value<O> + 'static + Clone + Copy,
     {
         self.funcs.push(Arc::new(Function {
@@ -141,6 +136,7 @@ impl FunctionRegistry {
                 name,
                 args_type: vec![I1::data_type()],
                 return_type: O::data_type(),
+                property: property.build().unwrap(),
             },
             eval: Box::new(erase_function_generic_1_arg(func)),
         }));
@@ -154,6 +150,7 @@ impl FunctionRegistry {
     >(
         &mut self,
         name: &'static str,
+        property: FunctionPropertyBuilder,
         func: F,
     ) where
         I1::Scalar: Default,
@@ -178,12 +175,17 @@ impl FunctionRegistry {
             name
         );
 
-        self.register_2_arg_core::<I1, I2, O, _>(name, move |lhs, rhs, generics| {
-            vectorize_2_arg(lhs, rhs, generics, func.clone())
-        });
+        let property = property.preserve_not_null(true);
+
+        self.register_2_arg_core::<I1, I2, O, _>(
+            name,
+            property.clone(),
+            move |lhs, rhs, generics| vectorize_2_arg(lhs, rhs, generics, func.clone()),
+        );
 
         self.register_2_arg_core::<NullableType<I1>, NullableType<I2>, NullableType<O>, _>(
             name,
+            property,
             move |lhs, rhs, generics| {
                 vectorize_passthrough_nullable_2_arg(lhs, rhs, generics, func)
             },
@@ -193,6 +195,7 @@ impl FunctionRegistry {
     pub fn register_2_arg_core<I1: ArgType, I2: ArgType, O: ArgType, F>(
         &mut self,
         name: &'static str,
+        property: FunctionPropertyBuilder,
         func: F,
     ) where
         F: for<'a> Fn(ValueRef<'a, I1>, ValueRef<'a, I2>, &GenericMap) -> Value<O>
@@ -206,6 +209,7 @@ impl FunctionRegistry {
                 name,
                 args_type: vec![I1::data_type(), I2::data_type()],
                 return_type: O::data_type(),
+                property: property.build().unwrap(),
             },
             eval: Box::new(erase_function_generic_2_arg(func)),
         }));

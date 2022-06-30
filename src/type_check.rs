@@ -1,20 +1,28 @@
 use std::collections::HashMap;
 
+use crate::property::ValuePropertyBuilder;
 use crate::{
     expr::{Expr, Literal, AST},
     function::{FunctionRegistry, FunctionSignature},
+    property::ValueProperty,
     types::DataType,
 };
 
-pub fn check(ast: &AST, fn_registry: &FunctionRegistry) -> Option<(Expr, DataType)> {
+pub fn check(ast: &AST, fn_registry: &FunctionRegistry) -> Option<(Expr, DataType, ValueProperty)> {
     match ast {
         AST::Literal(lit) => {
-            let ty = check_literal(lit);
-            Some((Expr::Literal(lit.clone()), ty))
+            let (ty, prop) = check_literal(lit);
+            Some((Expr::Literal(lit.clone()), ty, prop))
         }
-        AST::ColumnRef { name, data_type } => {
-            Some((Expr::ColumnRef { name: name.clone() }, data_type.clone()))
-        }
+        AST::ColumnRef {
+            name,
+            data_type,
+            property,
+        } => Some((
+            Expr::ColumnRef { name: name.clone() },
+            data_type.clone(),
+            property.clone(),
+        )),
         AST::FunctionCall { name, args, params } => {
             let args = args
                 .iter()
@@ -26,26 +34,63 @@ pub fn check(ast: &AST, fn_registry: &FunctionRegistry) -> Option<(Expr, DataTyp
     }
 }
 
-pub fn check_literal(literal: &Literal) -> DataType {
+pub fn check_literal(literal: &Literal) -> (DataType, ValueProperty) {
     match literal {
-        Literal::Null => DataType::Null,
-        Literal::Int8(_) => DataType::Int8,
-        Literal::Int16(_) => DataType::Int16,
-        Literal::UInt8(_) => DataType::UInt8,
-        Literal::UInt16(_) => DataType::UInt16,
-        Literal::Boolean(_) => DataType::Boolean,
-        Literal::String(_) => DataType::String,
+        Literal::Null => (DataType::Null, ValueProperty::default()),
+        Literal::Int8(_) => (
+            DataType::Int8,
+            ValuePropertyBuilder::default()
+                .not_null(true)
+                .build()
+                .unwrap(),
+        ),
+        Literal::Int16(_) => (
+            DataType::Int16,
+            ValuePropertyBuilder::default()
+                .not_null(true)
+                .build()
+                .unwrap(),
+        ),
+        Literal::UInt8(_) => (
+            DataType::UInt8,
+            ValuePropertyBuilder::default()
+                .not_null(true)
+                .build()
+                .unwrap(),
+        ),
+        Literal::UInt16(_) => (
+            DataType::UInt16,
+            ValuePropertyBuilder::default()
+                .not_null(true)
+                .build()
+                .unwrap(),
+        ),
+        Literal::Boolean(_) => (
+            DataType::Boolean,
+            ValuePropertyBuilder::default()
+                .not_null(true)
+                .build()
+                .unwrap(),
+        ),
+        Literal::String(_) => (
+            DataType::String,
+            ValuePropertyBuilder::default()
+                .not_null(true)
+                .build()
+                .unwrap(),
+        ),
     }
 }
 
 pub fn check_function(
     name: &str,
-    args: &[(Expr, DataType)],
+    args: &[(Expr, DataType, ValueProperty)],
     params: &[usize],
     fn_registry: &FunctionRegistry,
-) -> Option<(Expr, DataType)> {
+) -> Option<(Expr, DataType, ValueProperty)> {
     for (id, func) in fn_registry.search_candidates(name, params, args.len()) {
-        if let Some((checked_args, return_ty, generics)) = try_check_function(args, &func.signature)
+        if let Some((checked_args, return_ty, generics, prop)) =
+            try_check_function(args, &func.signature)
         {
             return Some((
                 Expr::FunctionCall {
@@ -55,6 +100,7 @@ pub fn check_function(
                     args: checked_args,
                 },
                 return_ty,
+                prop,
             ));
         }
     }
@@ -100,14 +146,19 @@ impl Subsitution {
 }
 
 pub fn try_check_function<'a, 'b>(
-    args: &[(Expr, DataType)],
+    args: &[(Expr, DataType, ValueProperty)],
     sig: &FunctionSignature,
-) -> Option<(Vec<Expr>, DataType, Vec<DataType>)> {
+) -> Option<(
+    Vec<(Expr, ValueProperty)>,
+    DataType,
+    Vec<DataType>,
+    ValueProperty,
+)> {
     assert_eq!(args.len(), sig.args_type.len());
 
     let substs = args
         .iter()
-        .map(|(_, ty)| ty)
+        .map(|(_, ty, _)| ty)
         .zip(&sig.args_type)
         .map(|(src_ty, dest_ty)| unify(src_ty, dest_ty))
         .collect::<Option<Vec<_>>>()?;
@@ -119,15 +170,19 @@ pub fn try_check_function<'a, 'b>(
     let checked_args = args
         .iter()
         .zip(&sig.args_type)
-        .map(|((arg, arg_type), sig_type)| {
+        .map(|((arg, arg_type, prop), sig_type)| {
             let sig_type = subst.apply(sig_type.clone())?;
             Some(if *arg_type == sig_type {
-                arg.clone()
+                (arg.clone(), prop.clone())
             } else {
-                Expr::Cast {
-                    expr: Box::new(arg.clone()),
-                    dest_type: sig_type,
-                }
+                // TODO: does cast really preserve_not_null?
+                (
+                    Expr::Cast {
+                        expr: Box::new(arg.clone()),
+                        dest_type: sig_type,
+                    },
+                    prop.clone(),
+                )
             })
         })
         .collect::<Option<Vec<_>>>()?;
@@ -149,7 +204,14 @@ pub fn try_check_function<'a, 'b>(
         })
         .unwrap_or_default();
 
-    Some((checked_args, return_type, generics))
+    let not_null = (return_type.as_nullable().is_none() && !return_type.is_null())
+        || (sig.property.preserve_not_null && args.iter().all(|(_, _, prop)| prop.not_null));
+    let prop = ValuePropertyBuilder::default()
+        .not_null(not_null)
+        .build()
+        .unwrap();
+
+    Some((checked_args, return_type, generics, prop))
 }
 
 pub fn unify(src_ty: &DataType, dest_ty: &DataType) -> Option<Subsitution> {

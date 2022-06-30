@@ -6,9 +6,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use property::FunctionPropertyBuilder;
+
 use crate::expr::{Literal, AST};
 use crate::function::FunctionRegistry;
 use crate::function::{vectorize_2_arg, Function, FunctionSignature};
+use crate::property::ValuePropertyBuilder;
 use crate::runtime::Runtime;
 use crate::types::DataType;
 use crate::types::*;
@@ -19,6 +22,7 @@ use crate::values::{Scalar, Value};
 pub mod display;
 pub mod expr;
 pub mod function;
+pub mod property;
 pub mod runtime;
 pub mod type_check;
 pub mod types;
@@ -44,6 +48,10 @@ fn main() {
                 AST::ColumnRef {
                     name: "a".to_string(),
                     data_type: DataType::Nullable(Box::new(DataType::UInt8)),
+                    property: ValuePropertyBuilder::default()
+                        .not_null(false)
+                        .build()
+                        .unwrap(),
                 },
                 AST::Literal(Literal::Int8(-10)),
             ],
@@ -67,10 +75,18 @@ fn main() {
                 AST::ColumnRef {
                     name: "a".to_string(),
                     data_type: DataType::Nullable(Box::new(DataType::UInt8)),
+                    property: ValuePropertyBuilder::default()
+                        .not_null(false)
+                        .build()
+                        .unwrap(),
                 },
                 AST::ColumnRef {
                     name: "b".to_string(),
                     data_type: DataType::Nullable(Box::new(DataType::UInt8)),
+                    property: ValuePropertyBuilder::default()
+                        .not_null(false)
+                        .build()
+                        .unwrap(),
                 },
             ],
             params: vec![],
@@ -101,6 +117,10 @@ fn main() {
             args: vec![AST::ColumnRef {
                 name: "a".to_string(),
                 data_type: DataType::Nullable(Box::new(DataType::Boolean)),
+                property: ValuePropertyBuilder::default()
+                    .not_null(false)
+                    .build()
+                    .unwrap(),
             }],
             params: vec![],
         },
@@ -136,10 +156,18 @@ fn main() {
                 AST::ColumnRef {
                     name: "array".to_string(),
                     data_type: DataType::Array(Box::new(DataType::Int16)),
+                    property: ValuePropertyBuilder::default()
+                        .not_null(true)
+                        .build()
+                        .unwrap(),
                 },
                 AST::ColumnRef {
                     name: "idx".to_string(),
                     data_type: DataType::UInt8,
+                    property: ValuePropertyBuilder::default()
+                        .not_null(true)
+                        .build()
+                        .unwrap(),
                 },
             ],
             params: vec![],
@@ -167,10 +195,18 @@ fn main() {
                     data_type: DataType::Array(Box::new(DataType::Array(Box::new(
                         DataType::Int16,
                     )))),
+                    property: ValuePropertyBuilder::default()
+                        .not_null(true)
+                        .build()
+                        .unwrap(),
                 },
                 AST::ColumnRef {
                     name: "idx".to_string(),
                     data_type: DataType::UInt8,
+                    property: ValuePropertyBuilder::default()
+                        .not_null(true)
+                        .build()
+                        .unwrap(),
                 },
             ],
             params: vec![],
@@ -217,12 +253,23 @@ fn main() {
 fn builtin_functions() -> FunctionRegistry {
     let mut registry = FunctionRegistry::default();
 
-    registry
-        .register_2_arg::<BooleanType, BooleanType, BooleanType, _>("and", |lhs, rhs| lhs && rhs);
+    registry.register_2_arg::<BooleanType, BooleanType, BooleanType, _>(
+        "and",
+        FunctionPropertyBuilder::default(),
+        |lhs, rhs| lhs && rhs,
+    );
 
-    registry.register_2_arg::<Int16Type, Int16Type, Int16Type, _>("plus", |lhs, rhs| lhs + rhs);
+    registry.register_2_arg::<Int16Type, Int16Type, Int16Type, _>(
+        "plus",
+        FunctionPropertyBuilder::default(),
+        |lhs, rhs| lhs + rhs,
+    );
 
-    registry.register_1_arg::<BooleanType, BooleanType, _>("not", |val| !val);
+    registry.register_1_arg::<BooleanType, BooleanType, _>(
+        "not",
+        FunctionPropertyBuilder::default(),
+        |val| !val,
+    );
 
     registry.register_function_factory("least", |_, args_len| {
         Some(Arc::new(Function {
@@ -230,6 +277,10 @@ fn builtin_functions() -> FunctionRegistry {
                 name: "least",
                 args_type: vec![DataType::Int16; args_len],
                 return_type: DataType::Int16,
+                property: FunctionPropertyBuilder::default()
+                    .preserve_not_null(true)
+                    .build()
+                    .unwrap(),
             },
             eval: Box::new(|args, generics| {
                 if args.len() == 0 {
@@ -262,12 +313,17 @@ fn builtin_functions() -> FunctionRegistry {
                 name: "array",
                 args_type: vec![DataType::Generic(0); args_len],
                 return_type: DataType::Generic(0),
+                property: FunctionPropertyBuilder::default()
+                    .preserve_not_null(true)
+                    .build()
+                    .unwrap(),
             },
             eval: Box::new(|_args, _generics| todo!()),
         }))
     });
     registry.register_2_arg::<ArrayType<GenericType<0>>, Int16Type, GenericType<0>, _>(
         "get",
+        FunctionPropertyBuilder::default(),
         |array, idx| array.index(idx as usize).to_owned(),
     );
 
@@ -277,9 +333,10 @@ fn builtin_functions() -> FunctionRegistry {
 pub fn run_ast(ast: &AST, columns: HashMap<String, Column>) {
     println!("ast: {ast}");
     let fn_registry = builtin_functions();
-    let (expr, ty) = type_check::check(&ast, &fn_registry).unwrap();
+    let (expr, ty, prop) = type_check::check(&ast, &fn_registry).unwrap();
     println!("expr: {expr}");
-    println!("ty: {ty}");
+    println!("type: {ty}");
+    println!("property: {prop}");
     let runtime = Runtime { columns };
     let result = runtime.run(&expr);
     println!("result: {result}\n");
