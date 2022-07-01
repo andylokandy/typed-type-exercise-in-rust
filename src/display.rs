@@ -64,9 +64,9 @@ impl Display for DataType {
             DataType::UInt16 => write!(f, "UInt16"),
             DataType::Int8 => write!(f, "Int8"),
             DataType::Int16 => write!(f, "Int16"),
-            DataType::Null => write!(f, "Nullable<?>"),
+            DataType::Null => write!(f, "Nullable<Nothing>"),
             DataType::Nullable(inner) => write!(f, "Nullable<{inner}>"),
-            DataType::EmptyArray => write!(f, "Array<?>"),
+            DataType::EmptyArray => write!(f, "Array<Nothing>"),
             DataType::Array(inner) => write!(f, "Array<{inner}>"),
             DataType::Tuple(tys) => {
                 if tys.len() == 1 {
