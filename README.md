@@ -10,7 +10,7 @@ Build database expression type checker and vectorized runtime executor in type-s
 
 3. **Enum-dispatched columns**. Use enum to exhaustive all column types and scalar types. They should further minimize runtime overhead and mental effort, compared to `dyn`-dispatched strategy.
 
-4. **Generic types**. Define
+4. **Generic types**. Use generic in the function signature to reduce the number of hand-written overloads. For example, you can express `get(arr: Array<T0>, idx: i64) -> T0` in the type system.
 
 ## Snippet of code
 
