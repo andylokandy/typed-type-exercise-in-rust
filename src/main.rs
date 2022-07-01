@@ -17,7 +17,7 @@ use crate::runtime::Runtime;
 use crate::types::DataType;
 use crate::types::*;
 use crate::types::{ArgType, ArrayType, Int16Type};
-use crate::values::Column;
+use crate::values::{Column, ValueRef};
 use crate::values::{Scalar, Value};
 
 pub mod display;
@@ -140,6 +140,42 @@ fn main() {
 
     run_ast(
         &AST::FunctionCall {
+            name: "get_tuple".to_string(),
+            args: vec![AST::ColumnRef {
+                name: "tuple".to_string(),
+                data_type: DataType::Tuple(vec![
+                    DataType::Int16,
+                    DataType::Nullable(Box::new(DataType::String)),
+                ]),
+                property: ValueProperty::default().not_null(true),
+            }],
+            params: vec![1],
+        },
+        [(
+            "tuple".to_string(),
+            Column::Tuple {
+                fields: vec![
+                    Column::Int16(vec![0, 1, 2, 3, 4]),
+                    Column::Nullable {
+                        column: Box::new(Column::String(vec![
+                            "a".to_string(),
+                            "b".to_string(),
+                            "c".to_string(),
+                            "d".to_string(),
+                            "e".to_string(),
+                        ])),
+                        nulls: vec![true, true, false, false, false],
+                    },
+                ],
+                len: 5,
+            },
+        )]
+        .into_iter()
+        .collect(),
+    );
+
+    run_ast(
+        &AST::FunctionCall {
             name: "array".to_string(),
             args: vec![],
             params: vec![],
@@ -257,11 +293,11 @@ fn builtin_functions() -> FunctionRegistry {
         |val| !val,
     );
 
-    registry.register_function_factory("least", |_, args_len| {
+    registry.register_function_factory("least", |_, args_type| {
         Some(Arc::new(Function {
             signature: FunctionSignature {
                 name: "least",
-                args_type: vec![DataType::Int16; args_len],
+                args_type: vec![DataType::Int16; args_type.len()],
                 return_type: DataType::Int16,
                 property: FunctionProperty::default().preserve_not_null(true),
             },
@@ -295,11 +331,11 @@ fn builtin_functions() -> FunctionRegistry {
         Value::Scalar(())
     });
 
-    registry.register_function_factory("array", |_, args_len| {
+    registry.register_function_factory("array", |_, args_type| {
         Some(Arc::new(Function {
             signature: FunctionSignature {
                 name: "array",
-                args_type: vec![DataType::Generic(0); args_len],
+                args_type: vec![DataType::Generic(0); args_type.len()],
                 return_type: DataType::Generic(0),
                 property: FunctionProperty::default().preserve_not_null(true),
             },
@@ -311,6 +347,33 @@ fn builtin_functions() -> FunctionRegistry {
         FunctionProperty::default(),
         |array, idx| array.index(idx as usize).to_owned(),
     );
+
+    registry.register_function_factory("get_tuple", |params, args_type| {
+        let idx = *params.get(0)?;
+        let tuple_tys = match args_type.get(0) {
+            Some(DataType::Tuple(tys)) => tys,
+            _ => return None,
+        };
+        if idx >= tuple_tys.len() {
+            return None;
+        }
+
+        Some(Arc::new(Function {
+            signature: FunctionSignature {
+                name: "get_tuple",
+                args_type: vec![DataType::Tuple(tuple_tys.to_vec())],
+                return_type: tuple_tys[idx].clone(),
+                property: FunctionProperty::default().preserve_not_null(true),
+            },
+            eval: Box::new(move |args, _generics| match &args[0] {
+                ValueRef::Scalar(Scalar::Tuple(fields)) => Value::Scalar(fields[idx].to_owned()),
+                ValueRef::Column(Column::Tuple { fields, .. }) => {
+                    Value::Column(fields[idx].to_owned())
+                }
+                _ => unreachable!(),
+            }),
+        }))
+    });
 
     registry
 }

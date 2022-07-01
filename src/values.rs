@@ -28,6 +28,7 @@ pub enum Scalar {
     Boolean(bool),
     String(String),
     Array(Column),
+    Tuple(Vec<Scalar>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, EnumAsInner)]
@@ -42,6 +43,7 @@ pub enum ScalarRef<'a> {
     Boolean(bool),
     String(&'a str),
     Array(ColumnRef<'a>),
+    Tuple(Vec<ScalarRef<'a>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumAsInner)]
@@ -65,6 +67,10 @@ pub enum Column {
     Nullable {
         column: Box<Column>,
         nulls: Vec<bool>,
+    },
+    Tuple {
+        fields: Vec<Column>,
+        len: usize,
     },
 }
 
@@ -113,6 +119,7 @@ impl Scalar {
             Scalar::Boolean(b) => ScalarRef::Boolean(*b),
             Scalar::String(s) => ScalarRef::String(s.as_str()),
             Scalar::Array(col) => ScalarRef::Array(col.slice_all()),
+            Scalar::Tuple(fields) => ScalarRef::Tuple(fields.iter().map(Scalar::as_ref).collect()),
         }
     }
 }
@@ -129,46 +136,14 @@ impl<'a> ScalarRef<'a> {
             ScalarRef::Boolean(b) => Scalar::Boolean(*b),
             ScalarRef::String(s) => Scalar::String(s.to_string()),
             ScalarRef::Array(col) => Scalar::Array(col.to_owned()),
+            ScalarRef::Tuple(fields) => {
+                Scalar::Tuple(fields.iter().map(ScalarRef::to_owned).collect())
+            }
         }
     }
 }
 
 impl Column {
-    pub fn index(&self, index: usize) -> Scalar {
-        match self {
-            Column::Null { len } => {
-                if index >= *len {
-                    panic!("Column index {index} out of range 0..{len}")
-                } else {
-                    Scalar::Null
-                }
-            }
-            Column::EmptyArray { len } => {
-                if index >= *len {
-                    panic!("Column index {index} out of range 0..{len}")
-                } else {
-                    Scalar::EmptyArray
-                }
-            }
-            Column::Int8(values) => Scalar::Int8(values[index]),
-            Column::Int16(values) => Scalar::Int16(values[index]),
-            Column::UInt8(values) => Scalar::UInt8(values[index]),
-            Column::UInt16(values) => Scalar::UInt16(values[index]),
-            Column::Boolean(values) => Scalar::Boolean(values[index]),
-            Column::String(values) => Scalar::String(values[index].clone()),
-            Column::Array { array, offsets } => {
-                Scalar::Array(array.slice(offsets[index].clone()).to_owned())
-            }
-            Column::Nullable { column: col, nulls } => {
-                if nulls.get(index).cloned().unwrap_or(false) {
-                    Scalar::Null
-                } else {
-                    col.index(index)
-                }
-            }
-        }
-    }
-
     pub fn len(&self) -> usize {
         match self {
             Column::Null { len } => *len,
@@ -181,6 +156,7 @@ impl Column {
             Column::String(col) => col.len(),
             Column::Array { array: _, offsets } => offsets.len(),
             Column::Nullable { column: _, nulls } => nulls.len(),
+            Column::Tuple { len, .. } => *len,
         }
     }
 
@@ -222,6 +198,13 @@ impl Column {
                 column.push(scalar);
                 nulls.push(false);
             }
+            (Column::Tuple { fields, len }, Scalar::Tuple(value)) => {
+                assert_eq!(fields.len(), value.len());
+                for (field, scalar) in fields.iter_mut().zip(value.iter()) {
+                    field.push(scalar.clone());
+                }
+                *len += 1;
+            }
             _ => unreachable!(),
         }
     }
@@ -243,6 +226,12 @@ impl Column {
             Column::Nullable { column, nulls } => {
                 column.push_default();
                 nulls.push(true);
+            }
+            Column::Tuple { fields, len } => {
+                for field in fields {
+                    field.push_default();
+                }
+                *len += 1;
             }
         }
     }
@@ -316,6 +305,13 @@ impl<'a> ColumnRef<'a> {
                 } else {
                     col.slice_all().index(index)
                 }
+            }
+            Column::Tuple { fields, .. } => {
+                let fields = fields
+                    .iter()
+                    .map(|field| field.slice_all().index(index))
+                    .collect();
+                ScalarRef::Tuple(fields)
             }
         }
     }
@@ -402,6 +398,23 @@ impl<'a> ColumnRef<'a> {
                 column: Box::new(column.slice(self.range.clone()).to_owned()),
                 nulls: nulls[self.range.clone()].to_vec(),
             },
+            Column::Tuple { fields, len } => {
+                if self.range.end > *len {
+                    panic!(
+                        "Column index {end} out of range 0..{len}",
+                        end = self.range.end
+                    )
+                } else {
+                    let fields = fields
+                        .iter()
+                        .map(|field| field.slice(self.range.clone()).to_owned())
+                        .collect();
+                    Column::Tuple {
+                        fields,
+                        len: self.range.end - self.range.start,
+                    }
+                }
+            }
         }
     }
 }

@@ -68,6 +68,20 @@ impl Display for DataType {
             DataType::Nullable(inner) => write!(f, "Nullable<{inner}>"),
             DataType::EmptyArray => write!(f, "Array<?>"),
             DataType::Array(inner) => write!(f, "Array<{inner}>"),
+            DataType::Tuple(tys) => {
+                if tys.len() == 1 {
+                    write!(f, "({},)", tys[0])
+                } else {
+                    write!(f, "(")?;
+                    for (i, ty) in tys.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{ty}")?;
+                    }
+                    write!(f, ")")
+                }
+            }
             DataType::Generic(index) => write!(f, "T{index}"),
         }
     }
