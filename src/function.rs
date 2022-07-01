@@ -90,6 +90,25 @@ impl FunctionRegistry {
             .unwrap_or_default()
     }
 
+    pub fn register_0_arg_core<O: ArgType, F>(
+        &mut self,
+        name: &'static str,
+        property: FunctionProperty,
+        func: F,
+    ) where
+        F: Fn(&GenericMap) -> Value<O> + 'static + Clone + Copy,
+    {
+        self.funcs.push(Arc::new(Function {
+            signature: FunctionSignature {
+                name,
+                args_type: vec![],
+                return_type: O::data_type(),
+                property,
+            },
+            eval: Box::new(erase_function_generic_0_arg(func)),
+        }));
+    }
+
     pub fn register_1_arg<I1: ArgType + ColumnViewer, O: ArgType + ColumnBuilder, F>(
         &mut self,
         name: &'static str,
@@ -216,6 +235,19 @@ impl FunctionRegistry {
         factory: impl Fn(&[usize], usize) -> Option<Arc<Function>> + 'static,
     ) {
         self.factories.insert(name, Box::new(factory));
+    }
+}
+
+fn erase_function_generic_0_arg<O: ArgType>(
+    func: impl for<'a> Fn(&GenericMap) -> Value<O>,
+) -> impl Fn(&[ValueRef<AnyType>], &GenericMap) -> Value<AnyType> {
+    move |_args, generics| {
+        let result = func(generics);
+
+        match result {
+            Value::Scalar(scalar) => Value::Scalar(O::upcast_scalar(scalar)),
+            Value::Column(col) => Value::Column(O::upcast_column(col)),
+        }
     }
 }
 

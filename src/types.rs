@@ -1,6 +1,7 @@
 pub mod any;
 pub mod array;
 pub mod boolean;
+pub mod empty_array;
 pub mod generic;
 pub mod int16;
 pub mod nullable;
@@ -8,6 +9,7 @@ pub mod nullable;
 pub use any::AnyType;
 pub use array::ArrayType;
 pub use boolean::BooleanType;
+pub use empty_array::EmptyArrayType;
 pub use generic::GenericType;
 pub use int16::Int16Type;
 pub use nullable::NullableType;
