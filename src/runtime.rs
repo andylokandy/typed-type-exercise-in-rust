@@ -161,6 +161,10 @@ fn create_column(dest_ty: &DataType, len: usize) -> Column {
             array: Box::new(create_column(dest_ty, len)),
             offsets: vec![0..0; len],
         },
+        DataType::Tuple(tys) => {
+            let fields = tys.iter().map(|ty| create_column(ty, len)).collect();
+            Column::Tuple { fields, len }
+        }
         DataType::Generic(_) => unreachable!(),
     }
 }

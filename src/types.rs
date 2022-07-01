@@ -37,6 +37,7 @@ pub enum DataType {
     Nullable(Box<DataType>),
     EmptyArray,
     Array(Box<DataType>),
+    Tuple(Vec<DataType>),
     Generic(usize),
 }
 
@@ -81,7 +82,6 @@ pub trait ColumnViewer: ValueType {
     fn index_column<'a>(col: Self::ColumnRef<'a>, index: usize) -> Self::ScalarRef<'a>;
     fn slice_column<'a>(col: Self::ColumnRef<'a>, range: Range<usize>) -> Self::ColumnRef<'a>;
     fn iter_column<'a>(col: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a>;
-
 }
 
 pub trait ColumnBuilder: ValueType {

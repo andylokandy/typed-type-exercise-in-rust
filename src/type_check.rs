@@ -23,12 +23,24 @@ pub fn check(ast: &AST, fn_registry: &FunctionRegistry) -> Option<(Expr, DataTyp
             *property,
         )),
         AST::FunctionCall { name, args, params } => {
-            let args = args
-                .iter()
-                .map(|arg| check(arg, fn_registry))
-                .collect::<Option<Vec<_>>>()?;
+            let (mut args_expr, mut args_type, mut args_prop) =
+                (Vec::new(), Vec::new(), Vec::new());
 
-            check_function(name, &args, params, fn_registry)
+            for arg in args {
+                let (arg, ty, prop) = check(arg, fn_registry)?;
+                args_expr.push(arg);
+                args_type.push(ty);
+                args_prop.push(prop);
+            }
+
+            check_function(
+                name,
+                params,
+                &args_expr,
+                &args_type,
+                &args_prop,
+                fn_registry,
+            )
         }
     }
 }
@@ -47,13 +59,15 @@ pub fn check_literal(literal: &Literal) -> (DataType, ValueProperty) {
 
 pub fn check_function(
     name: &str,
-    args: &[(Expr, DataType, ValueProperty)],
     params: &[usize],
+    args: &[Expr],
+    args_type: &[DataType],
+    args_prop: &[ValueProperty],
     fn_registry: &FunctionRegistry,
 ) -> Option<(Expr, DataType, ValueProperty)> {
-    for (id, func) in fn_registry.search_candidates(name, params, args.len()) {
+    for (id, func) in fn_registry.search_candidates(name, params, args_type) {
         if let Some((checked_args, return_ty, generics, prop)) =
-            try_check_function(args, &func.signature)
+            try_check_function(args, args_type, args_prop, &func.signature)
         {
             return Some((
                 Expr::FunctionCall {
@@ -110,7 +124,9 @@ impl Subsitution {
 
 #[allow(clippy::type_complexity)]
 pub fn try_check_function(
-    args: &[(Expr, DataType, ValueProperty)],
+    args: &[Expr],
+    args_type: &[DataType],
+    args_prop: &[ValueProperty],
     sig: &FunctionSignature,
 ) -> Option<(
     Vec<(Expr, ValueProperty)>,
@@ -120,9 +136,8 @@ pub fn try_check_function(
 )> {
     assert_eq!(args.len(), sig.args_type.len());
 
-    let substs = args
+    let substs = args_type
         .iter()
-        .map(|(_, ty, _)| ty)
         .zip(&sig.args_type)
         .map(|(src_ty, dest_ty)| unify(src_ty, dest_ty))
         .collect::<Option<Vec<_>>>()?;
@@ -133,11 +148,13 @@ pub fn try_check_function(
 
     let checked_args = args
         .iter()
+        .zip(args_prop)
+        .zip(args_type)
         .zip(&sig.args_type)
-        .map(|((arg, arg_type, prop), sig_type)| {
+        .map(|(((arg, arg_prop), arg_type), sig_type)| {
             let sig_type = subst.apply(sig_type.clone())?;
             Some(if *arg_type == sig_type {
-                (arg.clone(), *prop)
+                (arg.clone(), *arg_prop)
             } else {
                 (
                     Expr::Cast {
@@ -145,7 +162,7 @@ pub fn try_check_function(
                         dest_type: sig_type,
                     },
                     // TODO: does cast really preserve_not_null?
-                    ValueProperty::default().not_null(prop.not_null),
+                    ValueProperty::default().not_null(arg_prop.not_null),
                 )
             })
         })
@@ -169,7 +186,7 @@ pub fn try_check_function(
         .unwrap_or_default();
 
     let not_null = (return_type.as_nullable().is_none() && !return_type.is_null())
-        || (sig.property.preserve_not_null && args.iter().all(|(_, _, prop)| prop.not_null));
+        || (sig.property.preserve_not_null && args_prop.iter().all(|prop| prop.not_null));
     let prop = ValueProperty::default().not_null(not_null);
 
     Some((checked_args, return_type, generics, prop))
@@ -181,6 +198,20 @@ pub fn unify(src_ty: &DataType, dest_ty: &DataType) -> Option<Subsitution> {
         (ty, DataType::Generic(idx)) => Some(Subsitution::equation(*idx, ty.clone())),
         (DataType::Nullable(src_ty), DataType::Nullable(dest_ty)) => unify(src_ty, dest_ty),
         (DataType::Array(src_ty), DataType::Array(dest_ty)) => unify(src_ty, dest_ty),
+        (DataType::Tuple(src_tys), DataType::Tuple(dest_tys))
+            if src_tys.len() == dest_tys.len() =>
+        {
+            let substs = src_tys
+                .iter()
+                .zip(dest_tys)
+                .map(|(src_ty, dest_ty)| unify(src_ty, dest_ty))
+                .collect::<Option<Vec<_>>>()?;
+            let subst = substs
+                .into_iter()
+                .try_reduce(|subst1, subst2| subst1.merge(subst2))?
+                .unwrap_or_else(Subsitution::empty);
+            Some(subst)
+        }
         (src_ty, DataType::Nullable(dest_ty)) => unify(src_ty, dest_ty),
         (src_ty, dest_ty) if can_cast_to(src_ty, dest_ty) => Some(Subsitution::empty()),
         _ => None,

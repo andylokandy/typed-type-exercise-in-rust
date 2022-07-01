@@ -24,7 +24,7 @@ pub enum FunctionID {
     Factory {
         name: String,
         params: Vec<usize>,
-        args_len: usize,
+        args_type: Vec<DataType>,
     },
 }
 
@@ -44,8 +44,10 @@ pub struct FunctionRegistry {
     ///
     /// The first argument is the const parameters and the second argument is the number of arguments.
     #[allow(clippy::type_complexity)]
-    pub factories:
-        HashMap<&'static str, Box<dyn Fn(&[usize], usize) -> Option<Arc<Function>> + 'static>>,
+    pub factories: HashMap<
+        &'static str,
+        Box<dyn Fn(&[usize], &[DataType]) -> Option<Arc<Function>> + 'static>,
+    >,
 }
 
 impl FunctionRegistry {
@@ -53,7 +55,7 @@ impl FunctionRegistry {
         &self,
         name: &str,
         params: &[usize],
-        args_len: usize,
+        args_type: &[DataType],
     ) -> Vec<(FunctionID, Arc<Function>)> {
         if params.is_empty() {
             let builtin_funcs = self
@@ -61,7 +63,9 @@ impl FunctionRegistry {
                 .iter()
                 .enumerate()
                 .filter_map(|(i, func)| {
-                    if func.signature.name == name && func.signature.args_type.len() == args_len {
+                    if func.signature.name == name
+                        && func.signature.args_type.len() == args_type.len()
+                    {
                         Some((FunctionID::Builtin(i), func.clone()))
                     } else {
                         None
@@ -76,13 +80,14 @@ impl FunctionRegistry {
 
         self.factories
             .get(name)
-            .and_then(|factory| factory(params, args_len))
+            .and_then(|factory| factory(params, args_type))
             .map(|func| {
+                assert!(func.signature.args_type.len() == args_type.len());
                 vec![(
                     FunctionID::Factory {
                         name: name.to_string(),
                         params: params.to_vec(),
-                        args_len,
+                        args_type: args_type.to_vec(),
                     },
                     func,
                 )]
@@ -232,7 +237,7 @@ impl FunctionRegistry {
     pub fn register_function_factory(
         &mut self,
         name: &'static str,
-        factory: impl Fn(&[usize], usize) -> Option<Arc<Function>> + 'static,
+        factory: impl Fn(&[usize], &[DataType]) -> Option<Arc<Function>> + 'static,
     ) {
         self.factories.insert(name, Box::new(factory));
     }
