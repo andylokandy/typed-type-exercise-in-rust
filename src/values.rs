@@ -14,6 +14,10 @@ pub enum Value<T: ValueType> {
 pub enum ValueRef<'a, T: ValueType> {
     Scalar(T::ScalarRef<'a>),
     Column(T::ColumnRef<'a>),
+    SparseColumn {
+        col: T::ColumnRef<'a>,
+        rows: &'a [usize],
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, EnumAsInner)]
@@ -78,7 +82,10 @@ impl<'a, T: ValueType> ValueRef<'a, T> {
     pub fn to_owned(self) -> Value<T> {
         match self {
             ValueRef::Scalar(scalar) => Value::Scalar(T::to_owned_scalar(scalar)),
-            ValueRef::Column(col) => Value::Column(T::to_owned_column(col)),
+            ValueRef::Column(col) => Value::Column(T::to_owned_column(col, None)),
+            ValueRef::SparseColumn { col, rows } => {
+                Value::Column(T::to_owned_column(col, Some(rows)))
+            }
         }
     }
 }
@@ -97,6 +104,10 @@ impl<'a, T: ValueType> Clone for ValueRef<'a, T> {
         match self {
             ValueRef::Scalar(scalar) => ValueRef::Scalar(scalar.clone()),
             ValueRef::Column(col) => ValueRef::Column(col.clone()),
+            ValueRef::SparseColumn { col, rows } => ValueRef::SparseColumn {
+                col: col.clone(),
+                rows: rows.clone(),
+            },
         }
     }
 }

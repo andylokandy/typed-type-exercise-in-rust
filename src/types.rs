@@ -47,7 +47,7 @@ pub trait ValueType: Sized + 'static {
     type ColumnRef<'a>: Debug + Clone;
 
     fn to_owned_scalar<'a>(scalar: Self::ScalarRef<'a>) -> Self::Scalar;
-    fn to_owned_column<'a>(col: Self::ColumnRef<'a>) -> Self::Column;
+    fn to_owned_column<'a>(col: Self::ColumnRef<'a>, rows: Option<&[usize]>) -> Self::Column;
     fn to_scalar_ref<'a>(scalar: &'a Self::Scalar) -> Self::ScalarRef<'a>;
     fn to_column_ref<'a>(col: &'a Self::Column) -> Self::ColumnRef<'a>;
 }
@@ -77,10 +77,10 @@ pub trait ArgType: ValueType {
 pub trait ColumnViewer: ValueType {
     type ColumnIterator<'a>: Iterator<Item = Self::ScalarRef<'a>>;
 
-    fn column_len<'a>(col: Self::ColumnRef<'a>) -> usize;
-    fn index_column<'a>(col: Self::ColumnRef<'a>, index: usize) -> Self::ScalarRef<'a>;
-    fn slice_column<'a>(col: Self::ColumnRef<'a>, range: Range<usize>) -> Self::ColumnRef<'a>;
-    fn iter_column<'a>(col: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a>;
+    fn column_len<'a>(col: Self::ColumnRef<'a>, rows: Option<&[usize]>) -> usize;
+    fn index_column<'a>(col: Self::ColumnRef<'a>, index: usize, rows: Option<&[usize]>) -> Self::ScalarRef<'a>;
+    fn slice_column<'a>(col: Self::ColumnRef<'a>, range: Range<usize>, rows: Option<&[usize]>) -> Self::ColumnRef<'a>;
+    fn iter_column<'a>(col: Self::ColumnRef<'a>, rows: Option<&[usize]>) -> Self::ColumnIterator<'a>;
 
     fn column_covariance<'a: 'b, 'b>(col: &'b Self::ColumnRef<'a>) -> Self::ColumnRef<'b>;
 }

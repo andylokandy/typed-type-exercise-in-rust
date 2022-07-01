@@ -127,6 +127,21 @@ impl Runtime {
                 ))),
                 _ => None,
             },
+            ValueRef::SparseColumn { col, rows } => match (col, dest_type) {
+                (Column::Null { .. }, DataType::Nullable(dest_ty)) => {
+                    Some(Value::Column(Column::Nullable {
+                        column: Box::new(create_column(dest_ty, rows.len())),
+                        nulls: vec![false; rows.len()],
+                    }))
+                }
+                (Column::EmptyArray { .. }, DataType::Array(dest_ty)) => {
+                    let array = Box::new(create_column(dest_ty, 0));
+                    Some(Value::Column(Column::Array {
+                        array,
+                        offsets: vec![0..0; rows.len()],
+                    }))
+                }
+            }
         }
     }
 
@@ -158,7 +173,7 @@ fn create_column(dest_ty: &DataType, len: usize) -> Column {
             nulls: vec![false; len],
         },
         DataType::Array(dest_ty) => Column::Array {
-            array: Box::new(create_column(dest_ty, len)),
+            array: Box::new(create_column(dest_ty, 0)),
             offsets: vec![0..0; len],
         },
         DataType::Generic(_) => unreachable!(),
