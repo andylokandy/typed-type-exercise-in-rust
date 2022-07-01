@@ -8,18 +8,30 @@ Build database expression type checker and vectorized runtime executor in type-s
 
 2. **Type-safe downcast**. Function authors no longer have to worry about downcasting runtime inputs. Thanks to Rust's type system, so long as your function compiles, the downcast is always successful.
 
-3. **All-in-one generic trait**. We've only one trait `Type`. All other traits like `Array`, `ArrayBuilder`, `ArrayRef` and their sophisticated trait bound are all wiped out.
+3. **Enum-dispatched columns**. Use enum to exhaustive all column types and scalar types. They should further minimize runtime overhead and mental effort, compared to `dyn`-dispatched strategy.
 
-4. **Enum-dispatched columns**. Use enum to exhaustive all column types and scalar types. They should further minimize runtime overhead and mental effort, compared to `dyn`-dispatched strategy.
+4. **Generic types**. Define
 
 ## Snippet of code
 
-Define a fast, type-safe, auto-downcating and vectorized binary function in three lines of code:
+Define a fast, type-safe, auto-downcating and vectorized binary function in several lines of code:
 
 ```rust
-let bool_and = Function::new_2_arg::<BooleanType, BooleanType, BooleanType, _>("and", |lhs, rhs| {
-    vectorize_binary(lhs, rhs, |lhs: &bool, rhs: &bool| *lhs && *rhs)
-});
+registry.register_2_arg::<BooleanType, BooleanType, BooleanType, _>(
+    "and",
+    FunctionProperty::default(),
+    |lhs, rhs| lhs && rhs,
+);
+```
+
+Define a generic function `get` which returns an item of an array by the index:
+
+```rust
+registry.register_2_arg::<ArrayType<GenericType<0>>, Int16Type, GenericType<0>, _>(
+    "get",
+    FunctionProperty::default(),
+    |array, idx| array.index(idx as usize).to_owned(),
+);
 ```
 
 ## Run
@@ -30,10 +42,13 @@ cargo run
 
 ## Things to do
 
-- [ ] Automatcially generate the nullable function.
-- [ ] Implement arrays.
+- [x] Automatcially generate the nullable function.
+- [x] Implement arrays.
 - [ ] Implement unlimited-length tuples.
-- [ ] Implment generic functions.
+- [x] Implment generic functions.
+- [x] Implment functions properties.
+- [x] Implment variadic functions.
+- [ ] Implment sparse columns (some of the rows in a column are hidden).
 - [ ] Check ambiguity between function overloads.
 - [ ] Read material for the project.
 
