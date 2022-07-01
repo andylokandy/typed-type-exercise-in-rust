@@ -43,11 +43,11 @@ cargo run
 ## Things to do
 
 - [x] Automatcially generate the nullable function.
-- [ ] Automatcially generate the Null function.
+- [x] Automatcially generate the Null function.
 - [ ] Automatcially dispatch arithmetic types.
 - [x] Implement arrays.
 - [ ] Implement column builder.
-- [ ] Implement unlimited-length tuples.
+- [x] Implement unlimited-length tuples.
 - [x] Implment generic functions.
 - [x] Implment functions properties.
 - [x] Implment variadic functions.

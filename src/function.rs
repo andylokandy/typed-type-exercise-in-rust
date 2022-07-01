@@ -136,6 +136,10 @@ impl FunctionRegistry {
 
         let property = property.preserve_not_null(true);
 
+        self.register_1_arg_core::<NullType, NullType, _>(name, property, move |_, _| {
+            Value::Scalar(())
+        });
+
         self.register_1_arg_core::<I1, O, _>(name, property, move |val, generics| {
             vectorize_1_arg(val, generics, func)
         });
@@ -197,6 +201,18 @@ impl FunctionRegistry {
         );
 
         let property = property.preserve_not_null(true);
+
+        self.register_2_arg_core::<NullType, I2, NullType, _>(name, property, move |_, _, _| {
+            Value::Scalar(())
+        });
+        self.register_2_arg_core::<I1, NullType, NullType, _>(name, property, move |_, _, _| {
+            Value::Scalar(())
+        });
+        self.register_2_arg_core::<NullType, NullType, NullType, _>(
+            name,
+            property,
+            move |_, _, _| Value::Scalar(()),
+        );
 
         self.register_2_arg_core::<I1, I2, O, _>(name, property, move |lhs, rhs, generics| {
             vectorize_2_arg(lhs, rhs, generics, func)

@@ -4,6 +4,7 @@ pub mod boolean;
 pub mod empty_array;
 pub mod generic;
 pub mod int16;
+pub mod null;
 pub mod nullable;
 
 pub use any::AnyType;
@@ -12,6 +13,7 @@ pub use boolean::BooleanType;
 pub use empty_array::EmptyArrayType;
 pub use generic::GenericType;
 pub use int16::Int16Type;
+pub use null::NullType;
 pub use nullable::NullableType;
 
 use std::{fmt::Debug, ops::Range};

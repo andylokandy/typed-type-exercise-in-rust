@@ -44,6 +44,18 @@ fn main() {
 
     run_ast(
         &AST::FunctionCall {
+            name: "and".to_string(),
+            args: vec![
+                AST::Literal(Literal::Null),
+                AST::Literal(Literal::Boolean(false)),
+            ],
+            params: vec![],
+        },
+        HashMap::new(),
+    );
+
+    run_ast(
+        &AST::FunctionCall {
             name: "plus".to_string(),
             args: vec![
                 AST::ColumnRef {
