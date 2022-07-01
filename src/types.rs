@@ -82,7 +82,6 @@ pub trait ColumnViewer: ValueType {
     fn slice_column<'a>(col: Self::ColumnRef<'a>, range: Range<usize>) -> Self::ColumnRef<'a>;
     fn iter_column<'a>(col: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a>;
 
-    fn column_covariance<'a: 'b, 'b>(col: &'b Self::ColumnRef<'a>) -> Self::ColumnRef<'b>;
 }
 
 pub trait ColumnBuilder: ValueType {

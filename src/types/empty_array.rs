@@ -81,10 +81,6 @@ impl ColumnViewer for EmptyArrayType {
     fn iter_column<'a>(len: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a> {
         std::iter::repeat(()).take(len)
     }
-
-    fn column_covariance<'a: 'b, 'b>(col: &'b Self::ColumnRef<'a>) -> Self::ColumnRef<'b> {
-        *col
-    }
 }
 
 impl ColumnBuilder for EmptyArrayType {

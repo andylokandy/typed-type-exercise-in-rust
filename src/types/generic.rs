@@ -72,10 +72,6 @@ impl<const INDEX: usize> ColumnViewer for GenericType<INDEX> {
     fn iter_column<'a>(col: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a> {
         col.iter()
     }
-
-    fn column_covariance<'a: 'b, 'b>(col: &'b Self::ColumnRef<'a>) -> Self::ColumnRef<'b> {
-        col.clone()
-    }
 }
 
 impl<const INDEX: usize> ColumnBuilder for GenericType<INDEX> {

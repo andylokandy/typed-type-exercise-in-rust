@@ -103,10 +103,6 @@ where
             nulls: nulls.iter(),
         }
     }
-
-    fn column_covariance<'a: 'b, 'b>((col, nulls): &'b Self::ColumnRef<'a>) -> Self::ColumnRef<'b> {
-        (T::column_covariance(col), nulls)
-    }
 }
 
 pub struct NullableIterator<'a, T: ColumnViewer> {

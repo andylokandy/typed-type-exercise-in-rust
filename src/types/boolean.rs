@@ -75,10 +75,6 @@ impl ColumnViewer for BooleanType {
     fn iter_column<'a>(col: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a> {
         col.iter().cloned()
     }
-
-    fn column_covariance<'a: 'b, 'b>(col: &'b Self::ColumnRef<'a>) -> Self::ColumnRef<'b> {
-        *col
-    }
 }
 
 impl ColumnBuilder for BooleanType {

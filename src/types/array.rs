@@ -84,12 +84,6 @@ impl<T: ArgType + ColumnViewer> ColumnViewer for ArrayType<T> {
             offsets: offsets.iter(),
         }
     }
-
-    fn column_covariance<'a: 'b, 'b>(
-        (col, offsets): &'b Self::ColumnRef<'a>,
-    ) -> Self::ColumnRef<'b> {
-        (T::column_covariance(col), offsets)
-    }
 }
 
 pub struct ArrayIterator<'a, T: ColumnViewer> {
