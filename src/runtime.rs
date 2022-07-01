@@ -22,14 +22,17 @@ impl Runtime {
                 generics,
                 ..
             } => {
-                let cols = args.iter().map(|expr| self.run(expr)).collect::<Vec<_>>();
+                let cols = args
+                    .iter()
+                    .map(|(expr, _)| self.run(expr))
+                    .collect::<Vec<_>>();
                 let cols_ref = cols.iter().map(Value::as_ref).collect::<Vec<_>>();
                 (function.eval)(cols_ref.as_slice(), generics)
             }
             Expr::Cast { expr, dest_type } => {
                 let value = self.run(expr);
                 self.run_cast(value.as_ref(), dest_type)
-                    .expect(&format!("{value} can not be cast to {dest_type}"))
+                    .unwrap_or_else(|| panic!("{value} can not be cast to {dest_type}"))
             }
         }
     }

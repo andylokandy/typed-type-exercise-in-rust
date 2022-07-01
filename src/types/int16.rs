@@ -13,7 +13,7 @@ impl ValueType for Int16Type {
     type ColumnRef<'a> = &'a [i16];
 
     fn to_owned_scalar<'a>(scalar: Self::ScalarRef<'a>) -> Self::Scalar {
-        scalar.clone()
+        scalar
     }
 
     fn to_owned_column<'a>(col: Self::ColumnRef<'a>) -> Self::Column {
@@ -43,7 +43,7 @@ impl ArgType for Int16Type {
 
     fn try_downcast_column<'a>(col: &'a Column) -> Option<Self::ColumnRef<'a>> {
         match col {
-            Column::Int16(column) => Some(&column),
+            Column::Int16(column) => Some(column),
             _ => None,
         }
     }

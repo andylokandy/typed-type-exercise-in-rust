@@ -13,7 +13,7 @@ impl ValueType for BooleanType {
     type ColumnRef<'a> = &'a [bool];
 
     fn to_owned_scalar<'a>(scalar: Self::ScalarRef<'a>) -> Self::Scalar {
-        scalar.clone()
+        scalar
     }
 
     fn to_owned_column<'a>(col: Self::ColumnRef<'a>) -> Self::Column {

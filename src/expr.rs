@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     function::{Function, FunctionID},
+    property::ValueProperty,
     types::DataType,
 };
 
@@ -11,6 +12,7 @@ pub enum AST {
     ColumnRef {
         name: String,
         data_type: DataType,
+        property: ValueProperty,
     },
     FunctionCall {
         name: String,
@@ -33,7 +35,7 @@ pub enum Expr {
         id: FunctionID,
         function: Arc<Function>,
         generics: Vec<DataType>,
-        args: Vec<Expr>,
+        args: Vec<(Expr, ValueProperty)>,
     },
 }
 

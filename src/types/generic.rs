@@ -104,8 +104,8 @@ impl<const INDEX: usize> ColumnBuilder for GenericType<INDEX> {
         col
     }
 
-    fn append_column(mut col: Self::Column, mut other: Self::Column) -> Self::Column {
-        col.append(&mut other);
+    fn append_column(mut col: Self::Column, other: Self::Column) -> Self::Column {
+        col.append(&other);
         col
     }
 }

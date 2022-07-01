@@ -30,7 +30,7 @@ where
 
     fn to_column_ref<'a>(col: &'a Self::Column) -> Self::ColumnRef<'a> {
         let (col, nulls) = col;
-        (T::to_column_ref(col), &nulls)
+        (T::to_column_ref(col), nulls)
     }
 }
 
@@ -94,7 +94,7 @@ where
         (col, nulls): Self::ColumnRef<'a>,
         range: Range<usize>,
     ) -> Self::ColumnRef<'a> {
-        (T::slice_column(col, range.clone()), nulls)
+        (T::slice_column(col, range), nulls)
     }
 
     fn iter_column<'a>((col, nulls): Self::ColumnRef<'a>) -> Self::ColumnIterator<'a> {
