@@ -20,7 +20,7 @@ pub fn check(ast: &AST, fn_registry: &FunctionRegistry) -> Option<(Expr, DataTyp
         } => Some((
             Expr::ColumnRef { name: name.clone() },
             data_type.clone(),
-            property.clone(),
+            *property,
         )),
         AST::FunctionCall { name, args, params } => {
             let args = args
@@ -108,7 +108,8 @@ impl Subsitution {
     }
 }
 
-pub fn try_check_function<'a, 'b>(
+#[allow(clippy::type_complexity)]
+pub fn try_check_function(
     args: &[(Expr, DataType, ValueProperty)],
     sig: &FunctionSignature,
 ) -> Option<(
@@ -128,7 +129,7 @@ pub fn try_check_function<'a, 'b>(
     let subst = substs
         .into_iter()
         .try_reduce(|subst1, subst2| subst1.merge(subst2))?
-        .unwrap_or(Subsitution::empty());
+        .unwrap_or_else(Subsitution::empty);
 
     let checked_args = args
         .iter()
@@ -136,7 +137,7 @@ pub fn try_check_function<'a, 'b>(
         .map(|((arg, arg_type, prop), sig_type)| {
             let sig_type = subst.apply(sig_type.clone())?;
             Some(if *arg_type == sig_type {
-                (arg.clone(), prop.clone())
+                (arg.clone(), *prop)
             } else {
                 (
                     Expr::Cast {

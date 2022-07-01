@@ -3,6 +3,9 @@
 #![feature(box_patterns)]
 #![feature(associated_type_defaults)]
 
+#![allow(clippy::len_without_is_empty)]
+#![allow(clippy::needless_lifetimes)]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -255,7 +258,7 @@ fn builtin_functions() -> FunctionRegistry {
                 property: FunctionProperty::default().preserve_not_null(true),
             },
             eval: Box::new(|args, generics| {
-                if args.len() == 0 {
+                if args.is_empty() {
                     Value::Scalar(Scalar::Int16(0))
                 } else if args.len() == 1 {
                     args[0].clone().to_owned()
@@ -302,7 +305,7 @@ fn builtin_functions() -> FunctionRegistry {
 pub fn run_ast(ast: &AST, columns: HashMap<String, Column>) {
     println!("ast: {ast}");
     let fn_registry = builtin_functions();
-    let (expr, ty, prop) = type_check::check(&ast, &fn_registry).unwrap();
+    let (expr, ty, prop) = type_check::check(ast, &fn_registry).unwrap();
     println!("expr: {expr}");
     println!("type: {ty}");
     println!("property: {prop}");

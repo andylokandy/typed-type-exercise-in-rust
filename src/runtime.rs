@@ -15,7 +15,7 @@ impl Runtime {
     pub fn run(&self, expr: &Expr) -> Value<AnyType> {
         match expr {
             Expr::Literal(lit) => Value::Scalar(self.run_lit(lit)),
-            Expr::ColumnRef { name, .. } => Value::Column(self.columns[name].clone()),
+            Expr::ColumnRef { name } => Value::Column(self.columns[name].clone()),
             Expr::FunctionCall {
                 function,
                 args,
@@ -32,7 +32,7 @@ impl Runtime {
             Expr::Cast { expr, dest_type } => {
                 let value = self.run(expr);
                 self.run_cast(value.as_ref(), dest_type)
-                    .expect(&format!("{value} can not be cast to {dest_type}"))
+                    .unwrap_or_else(|| panic!("{value} can not be cast to {dest_type}"))
             }
         }
     }

@@ -33,6 +33,7 @@ pub enum FunctionID {
 pub struct Function {
     pub signature: FunctionSignature,
     #[educe(Debug(ignore))]
+    #[allow(clippy::type_complexity)]
     pub eval: Box<dyn Fn(&[ValueRef<AnyType>], &GenericMap) -> Value<AnyType>>,
 }
 
@@ -42,6 +43,7 @@ pub struct FunctionRegistry {
     /// A function to build function depending on the const parameters and the type of arguments (before coersion).
     ///
     /// The first argument is the const parameters and the second argument is the number of arguments.
+    #[allow(clippy::type_complexity)]
     pub factories:
         HashMap<&'static str, Box<dyn Fn(&[usize], usize) -> Option<Arc<Function>> + 'static>>,
 }
@@ -85,7 +87,7 @@ impl FunctionRegistry {
                     func,
                 )]
             })
-            .unwrap_or(Vec::new())
+            .unwrap_or_default()
     }
 
     pub fn register_1_arg<I1: ArgType + ColumnViewer, O: ArgType + ColumnBuilder, F>(
@@ -98,10 +100,9 @@ impl FunctionRegistry {
         O::Scalar: Default,
         F: for<'a> Fn(I1::ScalarRef<'a>) -> O::Scalar + 'static + Clone + Copy,
     {
-        let has_nullable = &[I1::data_type(), O::data_type()].iter().any(|t| match t {
-            DataType::Nullable(_) => true,
-            _ => false,
-        });
+        let has_nullable = &[I1::data_type(), O::data_type()]
+            .iter()
+            .any(|ty| ty.as_nullable().is_some());
 
         assert!(
             !has_nullable,
@@ -111,7 +112,7 @@ impl FunctionRegistry {
 
         let property = property.preserve_not_null(true);
 
-        self.register_1_arg_core::<I1, O, _>(name, property.clone(), move |val, generics| {
+        self.register_1_arg_core::<I1, O, _>(name, property, move |val, generics| {
             vectorize_1_arg(val, generics, func)
         });
 
@@ -135,7 +136,7 @@ impl FunctionRegistry {
                 name,
                 args_type: vec![I1::data_type()],
                 return_type: O::data_type(),
-                property: property,
+                property,
             },
             eval: Box::new(erase_function_generic_1_arg(func)),
         }));
@@ -163,10 +164,7 @@ impl FunctionRegistry {
     {
         let has_nullable = &[I1::data_type(), I2::data_type(), O::data_type()]
             .iter()
-            .any(|t| match t {
-                DataType::Nullable(_) => true,
-                _ => false,
-            });
+            .any(|ty| ty.as_nullable().is_some());
 
         assert!(
             !has_nullable,
@@ -176,11 +174,9 @@ impl FunctionRegistry {
 
         let property = property.preserve_not_null(true);
 
-        self.register_2_arg_core::<I1, I2, O, _>(
-            name,
-            property.clone(),
-            move |lhs, rhs, generics| vectorize_2_arg(lhs, rhs, generics, func.clone()),
-        );
+        self.register_2_arg_core::<I1, I2, O, _>(name, property, move |lhs, rhs, generics| {
+            vectorize_2_arg(lhs, rhs, generics, func)
+        });
 
         self.register_2_arg_core::<NullableType<I1>, NullableType<I2>, NullableType<O>, _>(
             name,
@@ -208,7 +204,7 @@ impl FunctionRegistry {
                 name,
                 args_type: vec![I1::data_type(), I2::data_type()],
                 return_type: O::data_type(),
-                property: property,
+                property,
             },
             eval: Box::new(erase_function_generic_2_arg(func)),
         }));
@@ -229,7 +225,7 @@ fn erase_function_generic_1_arg<I1: ArgType, O: ArgType>(
     move |args, generics| {
         let arg1 = match &args[0] {
             ValueRef::Scalar(scalar) => ValueRef::Scalar(I1::try_downcast_scalar(scalar).unwrap()),
-            ValueRef::Column(col) => ValueRef::Column(I1::try_downcast_column(&col).unwrap()),
+            ValueRef::Column(col) => ValueRef::Column(I1::try_downcast_column(col).unwrap()),
         };
 
         let result = func(arg1, generics);
@@ -247,11 +243,11 @@ fn erase_function_generic_2_arg<I1: ArgType, I2: ArgType, O: ArgType>(
     move |args, generics| {
         let arg1 = match &args[0] {
             ValueRef::Scalar(scalar) => ValueRef::Scalar(I1::try_downcast_scalar(scalar).unwrap()),
-            ValueRef::Column(col) => ValueRef::Column(I1::try_downcast_column(&col).unwrap()),
+            ValueRef::Column(col) => ValueRef::Column(I1::try_downcast_column(col).unwrap()),
         };
         let arg2 = match &args[1] {
             ValueRef::Scalar(scalar) => ValueRef::Scalar(I2::try_downcast_scalar(scalar).unwrap()),
-            ValueRef::Column(col) => ValueRef::Column(I2::try_downcast_column(&col).unwrap()),
+            ValueRef::Column(col) => ValueRef::Column(I2::try_downcast_column(col).unwrap()),
         };
 
         let result = func(arg1, arg2, generics);
@@ -271,7 +267,7 @@ pub fn vectorize_1_arg<'a, I1: ColumnViewer, O: ColumnBuilder>(
     match val {
         ValueRef::Scalar(val) => Value::Scalar(func(val)),
         ValueRef::Column(col) => {
-            let iter = I1::iter_column(col).map(|val| func(val));
+            let iter = I1::iter_column(col).map(func);
             let col = O::column_from_iter(iter, generics);
             Value::Column(col)
         }
@@ -319,7 +315,7 @@ where
         ValueRef::Scalar(None) => Value::Scalar(None),
         ValueRef::Scalar(Some(val)) => Value::Scalar(Some(func(val))),
         ValueRef::Column((col, nulls)) => {
-            let iter = I1::iter_column(col).map(|val| func(val));
+            let iter = I1::iter_column(col).map(func);
             let col = O::column_from_iter(iter, generics);
             Value::Column((col, nulls.to_vec()))
         }
