@@ -6,12 +6,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use property::FunctionPropertyBuilder;
+use property::{FunctionProperty, ValueProperty};
 
 use crate::expr::{Literal, AST};
 use crate::function::FunctionRegistry;
 use crate::function::{vectorize_2_arg, Function, FunctionSignature};
-use crate::property::ValuePropertyBuilder;
 use crate::runtime::Runtime;
 use crate::types::DataType;
 use crate::types::*;
@@ -48,10 +47,7 @@ fn main() {
                 AST::ColumnRef {
                     name: "a".to_string(),
                     data_type: DataType::Nullable(Box::new(DataType::UInt8)),
-                    property: ValuePropertyBuilder::default()
-                        .not_null(false)
-                        .build()
-                        .unwrap(),
+                    property: ValueProperty::default().not_null(false),
                 },
                 AST::Literal(Literal::Int8(-10)),
             ],
@@ -75,18 +71,12 @@ fn main() {
                 AST::ColumnRef {
                     name: "a".to_string(),
                     data_type: DataType::Nullable(Box::new(DataType::UInt8)),
-                    property: ValuePropertyBuilder::default()
-                        .not_null(false)
-                        .build()
-                        .unwrap(),
+                    property: ValueProperty::default().not_null(false),
                 },
                 AST::ColumnRef {
                     name: "b".to_string(),
                     data_type: DataType::Nullable(Box::new(DataType::UInt8)),
-                    property: ValuePropertyBuilder::default()
-                        .not_null(false)
-                        .build()
-                        .unwrap(),
+                    property: ValueProperty::default().not_null(false),
                 },
             ],
             params: vec![],
@@ -117,10 +107,7 @@ fn main() {
             args: vec![AST::ColumnRef {
                 name: "a".to_string(),
                 data_type: DataType::Nullable(Box::new(DataType::Boolean)),
-                property: ValuePropertyBuilder::default()
-                    .not_null(false)
-                    .build()
-                    .unwrap(),
+                property: ValueProperty::default().not_null(false),
             }],
             params: vec![],
         },
@@ -156,18 +143,12 @@ fn main() {
                 AST::ColumnRef {
                     name: "array".to_string(),
                     data_type: DataType::Array(Box::new(DataType::Int16)),
-                    property: ValuePropertyBuilder::default()
-                        .not_null(true)
-                        .build()
-                        .unwrap(),
+                    property: ValueProperty::default().not_null(true),
                 },
                 AST::ColumnRef {
                     name: "idx".to_string(),
                     data_type: DataType::UInt8,
-                    property: ValuePropertyBuilder::default()
-                        .not_null(true)
-                        .build()
-                        .unwrap(),
+                    property: ValueProperty::default().not_null(true),
                 },
             ],
             params: vec![],
@@ -195,18 +176,12 @@ fn main() {
                     data_type: DataType::Array(Box::new(DataType::Array(Box::new(
                         DataType::Int16,
                     )))),
-                    property: ValuePropertyBuilder::default()
-                        .not_null(true)
-                        .build()
-                        .unwrap(),
+                    property: ValueProperty::default().not_null(true),
                 },
                 AST::ColumnRef {
                     name: "idx".to_string(),
                     data_type: DataType::UInt8,
-                    property: ValuePropertyBuilder::default()
-                        .not_null(true)
-                        .build()
-                        .unwrap(),
+                    property: ValueProperty::default().not_null(true),
                 },
             ],
             params: vec![],
@@ -255,19 +230,19 @@ fn builtin_functions() -> FunctionRegistry {
 
     registry.register_2_arg::<BooleanType, BooleanType, BooleanType, _>(
         "and",
-        FunctionPropertyBuilder::default(),
+        FunctionProperty::default(),
         |lhs, rhs| lhs && rhs,
     );
 
     registry.register_2_arg::<Int16Type, Int16Type, Int16Type, _>(
         "plus",
-        FunctionPropertyBuilder::default(),
+        FunctionProperty::default(),
         |lhs, rhs| lhs + rhs,
     );
 
     registry.register_1_arg::<BooleanType, BooleanType, _>(
         "not",
-        FunctionPropertyBuilder::default(),
+        FunctionProperty::default(),
         |val| !val,
     );
 
@@ -277,10 +252,7 @@ fn builtin_functions() -> FunctionRegistry {
                 name: "least",
                 args_type: vec![DataType::Int16; args_len],
                 return_type: DataType::Int16,
-                property: FunctionPropertyBuilder::default()
-                    .preserve_not_null(true)
-                    .build()
-                    .unwrap(),
+                property: FunctionProperty::default().preserve_not_null(true),
             },
             eval: Box::new(|args, generics| {
                 if args.len() == 0 {
@@ -313,17 +285,14 @@ fn builtin_functions() -> FunctionRegistry {
                 name: "array",
                 args_type: vec![DataType::Generic(0); args_len],
                 return_type: DataType::Generic(0),
-                property: FunctionPropertyBuilder::default()
-                    .preserve_not_null(true)
-                    .build()
-                    .unwrap(),
+                property: FunctionProperty::default().preserve_not_null(true),
             },
             eval: Box::new(|_args, _generics| todo!()),
         }))
     });
     registry.register_2_arg::<ArrayType<GenericType<0>>, Int16Type, GenericType<0>, _>(
         "get",
-        FunctionPropertyBuilder::default(),
+        FunctionProperty::default(),
         |array, idx| array.index(idx as usize).to_owned(),
     );
 

@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use crate::property::ValuePropertyBuilder;
 use crate::{
     expr::{Expr, Literal, AST},
     function::{FunctionRegistry, FunctionSignature},
@@ -37,48 +36,12 @@ pub fn check(ast: &AST, fn_registry: &FunctionRegistry) -> Option<(Expr, DataTyp
 pub fn check_literal(literal: &Literal) -> (DataType, ValueProperty) {
     match literal {
         Literal::Null => (DataType::Null, ValueProperty::default()),
-        Literal::Int8(_) => (
-            DataType::Int8,
-            ValuePropertyBuilder::default()
-                .not_null(true)
-                .build()
-                .unwrap(),
-        ),
-        Literal::Int16(_) => (
-            DataType::Int16,
-            ValuePropertyBuilder::default()
-                .not_null(true)
-                .build()
-                .unwrap(),
-        ),
-        Literal::UInt8(_) => (
-            DataType::UInt8,
-            ValuePropertyBuilder::default()
-                .not_null(true)
-                .build()
-                .unwrap(),
-        ),
-        Literal::UInt16(_) => (
-            DataType::UInt16,
-            ValuePropertyBuilder::default()
-                .not_null(true)
-                .build()
-                .unwrap(),
-        ),
-        Literal::Boolean(_) => (
-            DataType::Boolean,
-            ValuePropertyBuilder::default()
-                .not_null(true)
-                .build()
-                .unwrap(),
-        ),
-        Literal::String(_) => (
-            DataType::String,
-            ValuePropertyBuilder::default()
-                .not_null(true)
-                .build()
-                .unwrap(),
-        ),
+        Literal::Int8(_) => (DataType::Int8, ValueProperty::default().not_null(true)),
+        Literal::Int16(_) => (DataType::Int16, ValueProperty::default().not_null(true)),
+        Literal::UInt8(_) => (DataType::UInt8, ValueProperty::default().not_null(true)),
+        Literal::UInt16(_) => (DataType::UInt16, ValueProperty::default().not_null(true)),
+        Literal::Boolean(_) => (DataType::Boolean, ValueProperty::default().not_null(true)),
+        Literal::String(_) => (DataType::String, ValueProperty::default().not_null(true)),
     }
 }
 
@@ -175,13 +138,13 @@ pub fn try_check_function<'a, 'b>(
             Some(if *arg_type == sig_type {
                 (arg.clone(), prop.clone())
             } else {
-                // TODO: does cast really preserve_not_null?
                 (
                     Expr::Cast {
                         expr: Box::new(arg.clone()),
                         dest_type: sig_type,
                     },
-                    prop.clone(),
+                    // TODO: does cast really preserve_not_null?
+                    ValueProperty::default().not_null(prop.not_null),
                 )
             })
         })
@@ -206,10 +169,7 @@ pub fn try_check_function<'a, 'b>(
 
     let not_null = (return_type.as_nullable().is_none() && !return_type.is_null())
         || (sig.property.preserve_not_null && args.iter().all(|(_, _, prop)| prop.not_null));
-    let prop = ValuePropertyBuilder::default()
-        .not_null(not_null)
-        .build()
-        .unwrap();
+    let prop = ValueProperty::default().not_null(not_null);
 
     Some((checked_args, return_type, generics, prop))
 }
