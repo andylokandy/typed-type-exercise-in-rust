@@ -2,7 +2,6 @@
 #![feature(iterator_try_reduce)]
 #![feature(box_patterns)]
 #![feature(associated_type_defaults)]
-
 #![allow(clippy::len_without_is_empty)]
 #![allow(clippy::needless_lifetimes)]
 
@@ -137,6 +136,15 @@ fn main() {
             params: vec![],
         },
         HashMap::new(),
+    );
+
+    run_ast(
+        &AST::FunctionCall {
+            name: "array".to_string(),
+            args: vec![],
+            params: vec![],
+        },
+        [].into_iter().collect(),
     );
 
     run_ast(
@@ -282,6 +290,11 @@ fn builtin_functions() -> FunctionRegistry {
             }),
         }))
     });
+
+    registry.register_0_arg_core::<EmptyArrayType, _>("array", FunctionProperty::default(), |_| {
+        Value::Scalar(())
+    });
+
     registry.register_function_factory("array", |_, args_len| {
         Some(Arc::new(Function {
             signature: FunctionSignature {
