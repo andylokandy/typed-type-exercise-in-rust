@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 educe = "0.4"
 enum-as-inner = "0.4"
+goldenfile = "1.4.3"

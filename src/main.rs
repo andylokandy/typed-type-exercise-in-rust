@@ -6,6 +6,7 @@
 #![allow(clippy::needless_lifetimes)]
 
 use std::collections::HashMap;
+use std::io::Write;
 use std::sync::Arc;
 
 use property::{FunctionProperty, ValueProperty};
@@ -29,8 +30,34 @@ pub mod type_check;
 pub mod types;
 pub mod values;
 
-fn main() {
+pub fn main() {
+    run_cases(&mut std::io::stdout());
+}
+
+#[test]
+pub fn test() {
+    use goldenfile::Mint;
+
+    let mut mint = Mint::new("tests");
+    let mut file = mint.new_goldenfile("run-output").unwrap();
+    run_cases(&mut file);
+}
+
+pub fn run_ast(output: &mut impl Write, ast: &AST, columns: HashMap<String, Column>) {
+    writeln!(output, "ast: {ast}").unwrap();
+    let fn_registry = builtin_functions();
+    let (expr, ty, prop) = type_check::check(ast, &fn_registry).unwrap();
+    writeln!(output, "expr: {expr}").unwrap();
+    writeln!(output, "type: {ty}").unwrap();
+    writeln!(output, "property: {prop}").unwrap();
+    let runtime = Runtime { columns };
+    let result = runtime.run(&expr);
+    writeln!(output, "result: {result}\n").unwrap();
+}
+
+fn run_cases(output: &mut impl Write) {
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "and".to_string(),
             args: vec![
@@ -43,6 +70,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "and".to_string(),
             args: vec![
@@ -55,6 +83,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "plus".to_string(),
             args: vec![
@@ -79,6 +108,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "plus".to_string(),
             args: vec![
@@ -116,6 +146,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "not".to_string(),
             args: vec![AST::ColumnRef {
@@ -137,6 +168,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "least".to_string(),
             args: vec![
@@ -151,6 +183,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "create_tuple".to_string(),
             args: vec![
@@ -163,6 +196,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "get_tuple".to_string(),
             args: vec![AST::FunctionCall {
@@ -204,6 +238,44 @@ fn main() {
     );
 
     run_ast(
+        output,
+        &AST::FunctionCall {
+            name: "get_tuple".to_string(),
+            args: vec![AST::ColumnRef {
+                name: "a".to_string(),
+                data_type: DataType::Nullable(Box::new(DataType::Tuple(vec![
+                    DataType::Boolean,
+                    DataType::String,
+                ]))),
+                property: ValueProperty::default().not_null(true),
+            }],
+            params: vec![1],
+        },
+        [(
+            "a".to_string(),
+            Column::Nullable {
+                column: Box::new(Column::Tuple {
+                    fields: vec![
+                        Column::Boolean(vec![false; 5]),
+                        Column::String(vec![
+                            "a".to_string(),
+                            "b".to_string(),
+                            "c".to_string(),
+                            "d".to_string(),
+                            "e".to_string(),
+                        ]),
+                    ],
+                    len: 5,
+                }),
+                nulls: vec![true, true, false, false, false],
+            },
+        )]
+        .into_iter()
+        .collect(),
+    );
+
+    run_ast(
+        output,
         &AST::FunctionCall {
             name: "create_array".to_string(),
             args: vec![],
@@ -213,6 +285,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "create_array".to_string(),
             args: vec![
@@ -225,6 +298,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "create_array".to_string(),
             args: vec![
@@ -250,6 +324,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "create_array".to_string(),
             args: vec![
@@ -283,6 +358,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "get".to_string(),
             args: vec![
@@ -314,6 +390,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "get".to_string(),
             args: vec![
@@ -553,17 +630,39 @@ fn builtin_functions() -> FunctionRegistry {
         }))
     });
 
-    registry
-}
+    registry.register_function_factory("get_tuple", |params, args_type| {
+        let idx = *params.get(0)?;
+        let tuple_tys = match args_type.get(0) {
+            Some(DataType::Nullable(box DataType::Tuple(tys))) => tys,
+            _ => return None,
+        };
+        if idx >= tuple_tys.len() {
+            return None;
+        }
 
-pub fn run_ast(ast: &AST, columns: HashMap<String, Column>) {
-    println!("ast: {ast}");
-    let fn_registry = builtin_functions();
-    let (expr, ty, prop) = type_check::check(ast, &fn_registry).unwrap();
-    println!("expr: {expr}");
-    println!("type: {ty}");
-    println!("property: {prop}");
-    let runtime = Runtime { columns };
-    let result = runtime.run(&expr);
-    println!("result: {result}\n");
+        Some(Arc::new(Function {
+            signature: FunctionSignature {
+                name: "get_tuple",
+                args_type: vec![DataType::Nullable(Box::new(DataType::Tuple(
+                    tuple_tys.to_vec(),
+                )))],
+                return_type: DataType::Nullable(Box::new(tuple_tys[idx].clone())),
+                property: FunctionProperty::default().preserve_not_null(true),
+            },
+            eval: Box::new(move |args, _| match &args[0] {
+                ValueRef::Scalar(Scalar::Null) => Value::Scalar(Scalar::Null),
+                ValueRef::Scalar(Scalar::Tuple(fields)) => Value::Scalar(fields[idx].to_owned()),
+                ValueRef::Column(Column::Nullable {
+                    column: box Column::Tuple { fields, .. },
+                    nulls,
+                }) => Value::Column(Column::Nullable {
+                    column: Box::new(fields[idx].to_owned()),
+                    nulls: nulls.clone(),
+                }),
+                _ => unreachable!(),
+            }),
+        }))
+    });
+
+    registry
 }

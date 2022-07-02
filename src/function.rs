@@ -20,9 +20,13 @@ pub struct FunctionSignature {
 /// the exactly same function from the remote execution nodes.
 #[derive(Debug, Clone)]
 pub enum FunctionID {
-    Builtin(usize),
+    Builtin {
+        name: &'static str,
+        id: usize,
+    },
     Factory {
-        name: String,
+        name: &'static str,
+        id: usize,
         params: Vec<usize>,
         args_type: Vec<DataType>,
     },
@@ -39,14 +43,14 @@ pub struct Function {
 
 #[derive(Default)]
 pub struct FunctionRegistry {
-    pub funcs: Vec<Arc<Function>>,
+    pub funcs: HashMap<&'static str, Vec<Arc<Function>>>,
     /// A function to build function depending on the const parameters and the type of arguments (before coersion).
     ///
     /// The first argument is the const parameters and the second argument is the number of arguments.
     #[allow(clippy::type_complexity)]
     pub factories: HashMap<
         &'static str,
-        Box<dyn Fn(&[usize], &[DataType]) -> Option<Arc<Function>> + 'static>,
+        Vec<Box<dyn Fn(&[usize], &[DataType]) -> Option<Arc<Function>> + 'static>>,
     >,
 }
 
@@ -60,18 +64,23 @@ impl FunctionRegistry {
         if params.is_empty() {
             let builtin_funcs = self
                 .funcs
-                .iter()
-                .enumerate()
-                .filter_map(|(i, func)| {
-                    if func.signature.name == name
-                        && func.signature.args_type.len() == args_type.len()
-                    {
-                        Some((FunctionID::Builtin(i), func.clone()))
-                    } else {
-                        None
-                    }
+                .get_key_value(name)
+                .map(|(name, funcs)| {
+                    funcs
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(id, func)| {
+                            if func.signature.name == *name
+                                && func.signature.args_type.len() == args_type.len()
+                            {
+                                Some((FunctionID::Builtin { name, id }, func.clone()))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>()
                 })
-                .collect::<Vec<_>>();
+                .unwrap_or_default();
 
             if !builtin_funcs.is_empty() {
                 return builtin_funcs;
@@ -79,18 +88,25 @@ impl FunctionRegistry {
         }
 
         self.factories
-            .get(name)
-            .and_then(|factory| factory(params, args_type))
-            .map(|func| {
-                assert!(func.signature.args_type.len() == args_type.len());
-                vec![(
-                    FunctionID::Factory {
-                        name: name.to_string(),
-                        params: params.to_vec(),
-                        args_type: args_type.to_vec(),
-                    },
-                    func,
-                )]
+            .get_key_value(name)
+            .map(|(name, factories)| {
+                factories
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(id, factory)| {
+                        factory(params, args_type).map(|func| {
+                            (
+                                FunctionID::Factory {
+                                    name,
+                                    id,
+                                    params: params.to_vec(),
+                                    args_type: args_type.to_vec(),
+                                },
+                                func,
+                            )
+                        })
+                    })
+                    .collect::<Vec<_>>()
             })
             .unwrap_or_default()
     }
@@ -103,15 +119,18 @@ impl FunctionRegistry {
     ) where
         F: Fn(&GenericMap) -> Value<O> + 'static + Clone + Copy,
     {
-        self.funcs.push(Arc::new(Function {
-            signature: FunctionSignature {
-                name,
-                args_type: vec![],
-                return_type: O::data_type(),
-                property,
-            },
-            eval: Box::new(erase_function_generic_0_arg(func)),
-        }));
+        self.funcs
+            .entry(name)
+            .or_insert_with(Vec::new)
+            .push(Arc::new(Function {
+                signature: FunctionSignature {
+                    name,
+                    args_type: vec![],
+                    return_type: O::data_type(),
+                    property,
+                },
+                eval: Box::new(erase_function_generic_0_arg(func)),
+            }));
     }
 
     pub fn register_1_arg<I1: ArgType + ColumnViewer, O: ArgType + ColumnBuilder, F>(
@@ -159,15 +178,18 @@ impl FunctionRegistry {
     ) where
         F: Fn(ValueRef<I1>, &GenericMap) -> Value<O> + 'static + Clone + Copy,
     {
-        self.funcs.push(Arc::new(Function {
-            signature: FunctionSignature {
-                name,
-                args_type: vec![I1::data_type()],
-                return_type: O::data_type(),
-                property,
-            },
-            eval: Box::new(erase_function_generic_1_arg(func)),
-        }));
+        self.funcs
+            .entry(name)
+            .or_insert_with(Vec::new)
+            .push(Arc::new(Function {
+                signature: FunctionSignature {
+                    name,
+                    args_type: vec![I1::data_type()],
+                    return_type: O::data_type(),
+                    property,
+                },
+                eval: Box::new(erase_function_generic_1_arg(func)),
+            }));
     }
 
     pub fn register_2_arg<
@@ -239,15 +261,18 @@ impl FunctionRegistry {
             + Clone
             + Copy,
     {
-        self.funcs.push(Arc::new(Function {
-            signature: FunctionSignature {
-                name,
-                args_type: vec![I1::data_type(), I2::data_type()],
-                return_type: O::data_type(),
-                property,
-            },
-            eval: Box::new(erase_function_generic_2_arg(func)),
-        }));
+        self.funcs
+            .entry(name)
+            .or_insert_with(Vec::new)
+            .push(Arc::new(Function {
+                signature: FunctionSignature {
+                    name,
+                    args_type: vec![I1::data_type(), I2::data_type()],
+                    return_type: O::data_type(),
+                    property,
+                },
+                eval: Box::new(erase_function_generic_2_arg(func)),
+            }));
     }
 
     pub fn register_function_factory(
@@ -255,7 +280,10 @@ impl FunctionRegistry {
         name: &'static str,
         factory: impl Fn(&[usize], &[DataType]) -> Option<Arc<Function>> + 'static,
     ) {
-        self.factories.insert(name, Box::new(factory));
+        self.factories
+            .entry(name)
+            .or_insert_with(Vec::new)
+            .push(Box::new(factory));
     }
 }
 

@@ -1,0 +1,90 @@
+ast: and(true::Boolean, false::Boolean)
+expr: and<Boolean, Boolean>(true::Boolean{not_null}, false::Boolean{not_null})
+type: Boolean
+property: {not_null}
+result: Boolean(false)
+
+ast: and(NULL, false::Boolean)
+expr: and<Nullable<Nothing>, Boolean>(NULL{}, false::Boolean{not_null})
+type: Nullable<Nothing>
+property: {}
+result: Null
+
+ast: plus(a::Nullable<UInt8>{}, -10::Int8)
+expr: plus<Nullable<Int16>, Nullable<Int16>>(cast<dest_type=Nullable<Int16>>(a){}, cast<dest_type=Nullable<Int16>>(-10::Int8){not_null})
+type: Nullable<Int16>
+property: {}
+result: Nullable { column: Int16([0, 1, 2]), nulls: [false, true, false] }
+
+ast: plus(a::Nullable<UInt8>{}, b::Nullable<UInt8>{})
+expr: plus<Nullable<Int16>, Nullable<Int16>>(cast<dest_type=Nullable<Int16>>(a){}, cast<dest_type=Nullable<Int16>>(b){})
+type: Nullable<Int16>
+property: {}
+result: Nullable { column: Int16([11, 13, 15]), nulls: [false, true, true] }
+
+ast: not(a::Nullable<Boolean>{})
+expr: not<Nullable<Boolean>>(a{})
+type: Nullable<Boolean>
+property: {}
+result: Nullable { column: Boolean([false, true, false]), nulls: [false, true, false] }
+
+ast: least(10::UInt8, 20::UInt8, 30::UInt8, 40::UInt8)
+expr: least<Int16, Int16, Int16, Int16>(cast<dest_type=Int16>(10::UInt8){not_null}, cast<dest_type=Int16>(20::UInt8){not_null}, cast<dest_type=Int16>(30::UInt8){not_null}, cast<dest_type=Int16>(40::UInt8){not_null})
+type: Int16
+property: {not_null}
+result: Int16(10)
+
+ast: create_tuple(NULL, true::Boolean)
+expr: create_tuple<Nullable<Nothing>, Boolean>(NULL{}, true::Boolean{not_null})
+type: (Nullable<Nothing>, Boolean)
+property: {not_null}
+result: Tuple([Null, Boolean(true)])
+
+ast: get_tuple(1)(create_tuple(a::Int16{not_null}, b::Nullable<String>{}))
+expr: get_tuple<(Int16, Nullable<String>)>(create_tuple<Int16, Nullable<String>>(a{not_null}, b{}){not_null})
+type: Nullable<String>
+property: {not_null}
+result: Nullable { column: String(["a", "b", "c", "d", "e"]), nulls: [true, true, false, false, false] }
+
+ast: get_tuple(1)(a::Nullable<(Boolean, String)>{not_null})
+expr: get_tuple<Nullable<(Boolean, String)>>(a{not_null})
+type: Nullable<String>
+property: {not_null}
+result: Nullable { column: String(["a", "b", "c", "d", "e"]), nulls: [true, true, false, false, false] }
+
+ast: create_array()
+expr: create_array<>()
+type: Array<Nothing>
+property: {not_null}
+result: EmptyArray
+
+ast: create_array(NULL, true::Boolean)
+expr: create_array<T0=Nullable<Boolean>><T0, T0>(cast<dest_type=Nullable<Boolean>>(NULL){}, cast<dest_type=Nullable<Boolean>>(true::Boolean){not_null})
+type: Array<Nullable<Boolean>>
+property: {not_null}
+result: Array(Nullable { column: Boolean([false, true]), nulls: [true, false] })
+
+ast: create_array(a::Int16{not_null}, b::Int16{not_null})
+expr: create_array<T0=Int16><T0, T0>(a{not_null}, b{not_null})
+type: Array<Int16>
+property: {not_null}
+result: Array { array: Int16([0, 5, 1, 6, 2, 7, 3, 8, 4, 9]), offsets: [0..2, 2..4, 4..6, 6..8, 8..10] }
+
+ast: create_array(create_array(a::Int16{not_null}, b::Int16{not_null}), NULL, NULL)
+expr: create_array<T0=Nullable<Array<Int16>>><T0, T0, T0>(cast<dest_type=Nullable<Array<Int16>>>(create_array<T0=Int16><T0, T0>(a{not_null}, b{not_null})){not_null}, cast<dest_type=Nullable<Array<Int16>>>(NULL){}, cast<dest_type=Nullable<Array<Int16>>>(NULL){})
+type: Array<Nullable<Array<Int16>>>
+property: {not_null}
+result: Array { array: Nullable { column: Array { array: Int16([0, 5, 1, 6, 2, 7, 3, 8, 4, 9]), offsets: [0..2, 2..2, 2..2, 2..4, 4..4, 4..4, 4..6, 6..6, 6..6, 6..8, 8..8, 8..8, 8..10, 10..10, 10..10] }, nulls: [false, true, true, false, true, true, false, true, true, false, true, true, false, true, true] }, offsets: [0..3, 3..6, 6..9, 9..12, 12..15] }
+
+ast: get(array::Array<Int16>{not_null}, idx::UInt8{not_null})
+expr: get<T0=Int16><Array<T0>, Int16>(array{not_null}, cast<dest_type=Int16>(idx){not_null})
+type: Int16
+property: {not_null}
+result: Int16([0, 21, 42, 63, 84])
+
+ast: get(array::Array<Array<Int16>>{not_null}, idx::UInt8{not_null})
+expr: get<T0=Array<Int16>><Array<T0>, Int16>(array{not_null}, cast<dest_type=Int16>(idx){not_null})
+type: Array<Int16>
+property: {not_null}
+result: Array { array: Int16([0, 1, 2, 3, 4, 25, 26, 27, 28, 29, 50, 51, 52, 53, 54]), offsets: [0..5, 5..10, 10..15] }
+
