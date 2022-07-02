@@ -6,6 +6,7 @@
 #![allow(clippy::needless_lifetimes)]
 
 use std::collections::HashMap;
+use std::io::Write;
 use std::sync::Arc;
 
 use property::{FunctionProperty, ValueProperty};
@@ -29,8 +30,34 @@ pub mod type_check;
 pub mod types;
 pub mod values;
 
-fn main() {
+pub fn main() {
+    run_cases(&mut std::io::stdout());
+}
+
+#[test]
+pub fn test() {
+    use goldenfile::Mint;
+
+    let mut mint = Mint::new("tests");
+    let mut file = mint.new_goldenfile("run-output").unwrap();
+    run_cases(&mut file);
+}
+
+pub fn run_ast(output: &mut impl Write, ast: &AST, columns: HashMap<String, Column>) {
+    writeln!(output, "ast: {ast}").unwrap();
+    let fn_registry = builtin_functions();
+    let (expr, ty, prop) = type_check::check(ast, &fn_registry).unwrap();
+    writeln!(output, "expr: {expr}").unwrap();
+    writeln!(output, "type: {ty}").unwrap();
+    writeln!(output, "property: {prop}").unwrap();
+    let runtime = Runtime { columns };
+    let result = runtime.run(&expr);
+    writeln!(output, "result: {result}\n").unwrap();
+}
+
+fn run_cases(output: &mut impl Write) {
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "and".to_string(),
             args: vec![
@@ -43,6 +70,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "and".to_string(),
             args: vec![
@@ -55,6 +83,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "plus".to_string(),
             args: vec![
@@ -79,6 +108,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "plus".to_string(),
             args: vec![
@@ -116,6 +146,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "not".to_string(),
             args: vec![AST::ColumnRef {
@@ -137,6 +168,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "least".to_string(),
             args: vec![
@@ -151,6 +183,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "create_tuple".to_string(),
             args: vec![
@@ -163,6 +196,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "get_tuple".to_string(),
             args: vec![AST::FunctionCall {
@@ -204,6 +238,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "get_tuple".to_string(),
             args: vec![AST::ColumnRef {
@@ -240,6 +275,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "create_array".to_string(),
             args: vec![],
@@ -249,6 +285,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "create_array".to_string(),
             args: vec![
@@ -261,6 +298,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "create_array".to_string(),
             args: vec![
@@ -286,6 +324,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "create_array".to_string(),
             args: vec![
@@ -319,6 +358,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "get".to_string(),
             args: vec![
@@ -350,6 +390,7 @@ fn main() {
     );
 
     run_ast(
+        output,
         &AST::FunctionCall {
             name: "get".to_string(),
             args: vec![
@@ -624,16 +665,4 @@ fn builtin_functions() -> FunctionRegistry {
     });
 
     registry
-}
-
-pub fn run_ast(ast: &AST, columns: HashMap<String, Column>) {
-    println!("ast: {ast}");
-    let fn_registry = builtin_functions();
-    let (expr, ty, prop) = type_check::check(ast, &fn_registry).unwrap();
-    println!("expr: {expr}");
-    println!("type: {ty}");
-    println!("property: {prop}");
-    let runtime = Runtime { columns };
-    let result = runtime.run(&expr);
-    println!("result: {result}\n");
 }
