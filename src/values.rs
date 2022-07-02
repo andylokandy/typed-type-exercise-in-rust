@@ -141,6 +141,27 @@ impl<'a> ScalarRef<'a> {
             }
         }
     }
+
+    pub fn repeat(&self, n: usize) -> Column {
+        match self {
+            ScalarRef::Null => Column::Null { len: n },
+            ScalarRef::EmptyArray => Column::EmptyArray { len: n },
+            ScalarRef::Int8(i) => Column::Int8(vec![i.clone(); n]),
+            ScalarRef::Int16(i) => Column::Int16(vec![i.clone(); n]),
+            ScalarRef::UInt8(i) => Column::UInt8(vec![i.clone(); n]),
+            ScalarRef::UInt16(i) => Column::UInt16(vec![i.clone(); n]),
+            ScalarRef::Boolean(b) => Column::Boolean(vec![b.clone(); n]),
+            ScalarRef::String(s) => Column::String(vec![s.to_string(); n]),
+            ScalarRef::Array(col) => Column::Array {
+                array: Box::new(col.to_owned()),
+                offsets: vec![0..col.len(); n],
+            },
+            ScalarRef::Tuple(fields) => Column::Tuple {
+                fields: fields.iter().map(|field| field.repeat(n)).collect(),
+                len: n,
+            },
+        }
+    }
 }
 
 impl Column {
@@ -272,6 +293,19 @@ impl Column {
             ) => {
                 column.append(other_column);
                 nulls.extend_from_slice(other_nulls);
+            }
+            (
+                Column::Tuple { fields, len },
+                Column::Tuple {
+                    fields: other_fields,
+                    len: other_len,
+                },
+            ) => {
+                assert_eq!(fields.len(), other_fields.len());
+                for (field, other_field) in fields.iter_mut().zip(other_fields.iter()) {
+                    field.append(other_field);
+                }
+                *len += other_len;
             }
             _ => unreachable!(),
         }

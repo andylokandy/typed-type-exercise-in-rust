@@ -152,36 +152,53 @@ fn main() {
 
     run_ast(
         &AST::FunctionCall {
+            name: "create_tuple".to_string(),
+            args: vec![
+                AST::Literal(Literal::Null),
+                AST::Literal(Literal::Boolean(true)),
+            ],
+            params: vec![],
+        },
+        [].into_iter().collect(),
+    );
+
+    run_ast(
+        &AST::FunctionCall {
             name: "get_tuple".to_string(),
-            args: vec![AST::ColumnRef {
-                name: "tuple".to_string(),
-                data_type: DataType::Tuple(vec![
-                    DataType::Int16,
-                    DataType::Nullable(Box::new(DataType::String)),
-                ]),
-                property: ValueProperty::default().not_null(true),
+            args: vec![AST::FunctionCall {
+                name: "create_tuple".to_string(),
+                args: vec![
+                    AST::ColumnRef {
+                        name: "a".to_string(),
+                        data_type: DataType::Int16,
+                        property: ValueProperty::default().not_null(true),
+                    },
+                    AST::ColumnRef {
+                        name: "b".to_string(),
+                        data_type: DataType::Nullable(Box::new(DataType::String)),
+                        property: ValueProperty::default().not_null(false),
+                    },
+                ],
+                params: vec![],
             }],
             params: vec![1],
         },
-        [(
-            "tuple".to_string(),
-            Column::Tuple {
-                fields: vec![
-                    Column::Int16(vec![0, 1, 2, 3, 4]),
-                    Column::Nullable {
-                        column: Box::new(Column::String(vec![
-                            "a".to_string(),
-                            "b".to_string(),
-                            "c".to_string(),
-                            "d".to_string(),
-                            "e".to_string(),
-                        ])),
-                        nulls: vec![true, true, false, false, false],
-                    },
-                ],
-                len: 5,
-            },
-        )]
+        [
+            ("a".to_string(), Column::Int16(vec![0, 1, 2, 3, 4])),
+            (
+                "b".to_string(),
+                Column::Nullable {
+                    column: Box::new(Column::String(vec![
+                        "a".to_string(),
+                        "b".to_string(),
+                        "c".to_string(),
+                        "d".to_string(),
+                        "e".to_string(),
+                    ])),
+                    nulls: vec![true, true, false, false, false],
+                },
+            ),
+        ]
         .into_iter()
         .collect(),
     );
@@ -360,6 +377,44 @@ fn builtin_functions() -> FunctionRegistry {
         |array, idx| array.index(idx as usize).to_owned(),
     );
 
+    registry.register_function_factory("create_tuple", |_, args_type| {
+        Some(Arc::new(Function {
+            signature: FunctionSignature {
+                name: "create_tuple",
+                args_type: args_type.to_vec(),
+                return_type: DataType::Tuple(args_type.to_vec()),
+                property: FunctionProperty::default().preserve_not_null(true),
+            },
+            eval: Box::new(move |args, _generics| {
+                let len = args.iter().find_map(|arg| match arg {
+                    ValueRef::Column(col) => Some(col.len()),
+                    _ => None,
+                });
+
+                if let Some(len) = len {
+                    let fields = args
+                        .iter()
+                        .map(|arg| match arg {
+                            ValueRef::Scalar(scalar) => scalar.as_ref().repeat(len),
+                            ValueRef::Column(col) => (*col).to_owned(),
+                        })
+                        .collect();
+                    Value::Column(Column::Tuple { fields, len })
+                } else {
+                    // All args are scalars, so we return a scalar as result
+                    let fields = args
+                        .iter()
+                        .map(|arg| match arg {
+                            ValueRef::Scalar(scalar) => (*scalar).to_owned(),
+                            ValueRef::Column(_) => unreachable!(),
+                        })
+                        .collect();
+                    Value::Scalar(Scalar::Tuple(fields))
+                }
+            }),
+        }))
+    });
+
     registry.register_function_factory("get_tuple", |params, args_type| {
         let idx = *params.get(0)?;
         let tuple_tys = match args_type.get(0) {
@@ -377,7 +432,7 @@ fn builtin_functions() -> FunctionRegistry {
                 return_type: tuple_tys[idx].clone(),
                 property: FunctionProperty::default().preserve_not_null(true),
             },
-            eval: Box::new(move |args, _generics| match &args[0] {
+            eval: Box::new(move |args, _| match &args[0] {
                 ValueRef::Scalar(Scalar::Tuple(fields)) => Value::Scalar(fields[idx].to_owned()),
                 ValueRef::Column(Column::Tuple { fields, .. }) => {
                     Value::Column(fields[idx].to_owned())
