@@ -146,11 +146,11 @@ impl<'a> ScalarRef<'a> {
         match self {
             ScalarRef::Null => Column::Null { len: n },
             ScalarRef::EmptyArray => Column::EmptyArray { len: n },
-            ScalarRef::Int8(i) => Column::Int8(vec![i.clone(); n]),
-            ScalarRef::Int16(i) => Column::Int16(vec![i.clone(); n]),
-            ScalarRef::UInt8(i) => Column::UInt8(vec![i.clone(); n]),
-            ScalarRef::UInt16(i) => Column::UInt16(vec![i.clone(); n]),
-            ScalarRef::Boolean(b) => Column::Boolean(vec![b.clone(); n]),
+            ScalarRef::Int8(i) => Column::Int8(vec![*i; n]),
+            ScalarRef::Int16(i) => Column::Int16(vec![*i; n]),
+            ScalarRef::UInt8(i) => Column::UInt8(vec![*i; n]),
+            ScalarRef::UInt16(i) => Column::UInt16(vec![*i; n]),
+            ScalarRef::Boolean(b) => Column::Boolean(vec![*b; n]),
             ScalarRef::String(s) => Column::String(vec![s.to_string(); n]),
             ScalarRef::Array(col) => Column::Array {
                 array: Box::new(col.to_owned()),
@@ -195,6 +195,35 @@ impl Column {
         }
     }
 
+    pub fn create_and_fill_default(ty: &DataType, len: usize) -> Column {
+        match ty {
+            DataType::Null => Column::Null { len },
+            DataType::EmptyArray => Column::EmptyArray { len },
+            DataType::Boolean => Column::Boolean(vec![false; len]),
+            DataType::String => Column::String(vec![String::new(); len]),
+            DataType::UInt8 => Column::UInt8(vec![0; len]),
+            DataType::UInt16 => Column::UInt16(vec![0; len]),
+            DataType::Int8 => Column::Int8(vec![0; len]),
+            DataType::Int16 => Column::Int16(vec![0; len]),
+            DataType::Nullable(ty) => Column::Nullable {
+                column: Box::new(Self::create_and_fill_default(ty, len)),
+                nulls: vec![false; len],
+            },
+            DataType::Array(ty) => Column::Array {
+                array: Box::new(Self::create_and_fill_default(ty, 0)),
+                offsets: vec![0..0; len],
+            },
+            DataType::Tuple(fields) => Column::Tuple {
+                fields: fields
+                    .iter()
+                    .map(|field| Self::create_and_fill_default(field, len))
+                    .collect(),
+                len,
+            },
+            DataType::Generic(_) => unreachable!(),
+        }
+    }
+
     pub fn push(&mut self, item: Scalar) {
         match (self, item) {
             (Column::Null { len }, Scalar::Null) => *len += 1,
@@ -226,7 +255,7 @@ impl Column {
                 }
                 *len += 1;
             }
-            _ => unreachable!(),
+            (c, s) => unreachable!("{c:?} {s:?}"),
         }
     }
 
