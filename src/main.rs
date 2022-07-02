@@ -205,6 +205,42 @@ fn main() {
 
     run_ast(
         &AST::FunctionCall {
+            name: "get_tuple".to_string(),
+            args: vec![AST::ColumnRef {
+                name: "a".to_string(),
+                data_type: DataType::Nullable(Box::new(DataType::Tuple(vec![
+                    DataType::Boolean,
+                    DataType::String,
+                ]))),
+                property: ValueProperty::default().not_null(true),
+            }],
+            params: vec![1],
+        },
+        [(
+            "a".to_string(),
+            Column::Nullable {
+                column: Box::new(Column::Tuple {
+                    fields: vec![
+                        Column::Boolean(vec![false; 5]),
+                        Column::String(vec![
+                            "a".to_string(),
+                            "b".to_string(),
+                            "c".to_string(),
+                            "d".to_string(),
+                            "e".to_string(),
+                        ]),
+                    ],
+                    len: 5,
+                }),
+                nulls: vec![true, true, false, false, false],
+            },
+        )]
+        .into_iter()
+        .collect(),
+    );
+
+    run_ast(
+        &AST::FunctionCall {
             name: "create_array".to_string(),
             args: vec![],
             params: vec![],
@@ -548,6 +584,40 @@ fn builtin_functions() -> FunctionRegistry {
                 ValueRef::Column(Column::Tuple { fields, .. }) => {
                     Value::Column(fields[idx].to_owned())
                 }
+                _ => unreachable!(),
+            }),
+        }))
+    });
+
+    registry.register_function_factory("get_tuple", |params, args_type| {
+        let idx = *params.get(0)?;
+        let tuple_tys = match args_type.get(0) {
+            Some(DataType::Nullable(box DataType::Tuple(tys))) => tys,
+            _ => return None,
+        };
+        if idx >= tuple_tys.len() {
+            return None;
+        }
+
+        Some(Arc::new(Function {
+            signature: FunctionSignature {
+                name: "get_tuple",
+                args_type: vec![DataType::Nullable(Box::new(DataType::Tuple(
+                    tuple_tys.to_vec(),
+                )))],
+                return_type: DataType::Nullable(Box::new(tuple_tys[idx].clone())),
+                property: FunctionProperty::default().preserve_not_null(true),
+            },
+            eval: Box::new(move |args, _| match &args[0] {
+                ValueRef::Scalar(Scalar::Null) => Value::Scalar(Scalar::Null),
+                ValueRef::Scalar(Scalar::Tuple(fields)) => Value::Scalar(fields[idx].to_owned()),
+                ValueRef::Column(Column::Nullable {
+                    column: box Column::Tuple { fields, .. },
+                    nulls,
+                }) => Value::Column(Column::Nullable {
+                    column: Box::new(fields[idx].to_owned()),
+                    nulls: nulls.clone(),
+                }),
                 _ => unreachable!(),
             }),
         }))
