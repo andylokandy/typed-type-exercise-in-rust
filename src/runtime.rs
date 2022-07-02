@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use crate::{
     expr::{Expr, Literal},
     types::{any::AnyType, DataType},
+    values::Value,
     values::{Column, Scalar},
-    values::{Value, ValueRef},
 };
 
 pub struct Runtime {
@@ -31,72 +31,81 @@ impl Runtime {
             }
             Expr::Cast { expr, dest_type } => {
                 let value = self.run(expr);
-                self.run_cast(value.as_ref(), dest_type)
-                    .unwrap_or_else(|| panic!("{value} can not be cast to {dest_type}"))
+                // TODO: remove me
+                let desc_value = format!("{}", value);
+                self.run_cast(value, dest_type)
+                    .unwrap_or_else(|| panic!("{desc_value} can not be cast to {dest_type}"))
             }
         }
     }
 
-    pub fn run_cast(
-        &self,
-        input: ValueRef<AnyType>,
-        dest_type: &DataType,
-    ) -> Option<Value<AnyType>> {
-        match &input {
-            ValueRef::Scalar(scalar) => match (scalar, dest_type) {
+    pub fn run_cast(&self, input: Value<AnyType>, dest_type: &DataType) -> Option<Value<AnyType>> {
+        match input {
+            Value::Scalar(scalar) => match (scalar, dest_type) {
                 (Scalar::Null, DataType::Nullable(_)) => Some(Value::Scalar(Scalar::Null)),
                 (Scalar::EmptyArray, DataType::Array(dest_ty)) => {
-                    let column = create_column(dest_ty, 0);
+                    let column = Column::create_and_fill_default(dest_ty, 0);
                     Some(Value::Scalar(Scalar::Array(column)))
                 }
-                (_, DataType::Nullable(dest_ty)) => self.run_cast(input, dest_ty),
+                (scalar, DataType::Nullable(dest_ty)) => {
+                    self.run_cast(Value::Scalar(scalar), dest_ty)
+                }
                 (Scalar::Array(array), DataType::Array(dest_ty)) => {
                     let array = self
-                        .run_cast(ValueRef::Column(array), dest_ty)?
+                        .run_cast(Value::Column(array), dest_ty)?
                         .into_column()
                         .ok()
                         .unwrap();
                     Some(Value::Scalar(Scalar::Array(array)))
                 }
                 (Scalar::UInt8(val), DataType::UInt16) => {
-                    Some(Value::Scalar(Scalar::UInt16(*val as u16)))
+                    Some(Value::Scalar(Scalar::UInt16(val as u16)))
                 }
                 (Scalar::Int8(val), DataType::Int16) => {
-                    Some(Value::Scalar(Scalar::Int16(*val as i16)))
+                    Some(Value::Scalar(Scalar::Int16(val as i16)))
                 }
                 (Scalar::UInt8(val), DataType::Int16) => {
-                    Some(Value::Scalar(Scalar::Int16(*val as i16)))
+                    Some(Value::Scalar(Scalar::Int16(val as i16)))
+                }
+                (scalar @ Scalar::Boolean(_), DataType::Boolean)
+                | (scalar @ Scalar::String(_), DataType::String)
+                | (scalar @ Scalar::UInt8(_), DataType::UInt8)
+                | (scalar @ Scalar::Int8(_), DataType::Int8)
+                | (scalar @ Scalar::Int16(_), DataType::Int16)
+                | (scalar @ Scalar::Null, DataType::Null)
+                | (scalar @ Scalar::EmptyArray, DataType::EmptyArray) => {
+                    Some(Value::Scalar(scalar))
                 }
                 _ => None,
             },
-            ValueRef::Column(col) => match (col, dest_type) {
+            Value::Column(col) => match (col, dest_type) {
                 (Column::Null { len }, DataType::Nullable(dest_ty)) => {
                     Some(Value::Column(Column::Nullable {
-                        column: Box::new(create_column(dest_ty, *len)),
-                        nulls: vec![false; *len],
+                        column: Box::new(Column::create_and_fill_default(dest_ty, len)),
+                        nulls: vec![false; len],
                     }))
                 }
                 (Column::EmptyArray { len }, DataType::Array(dest_ty)) => {
-                    let array = Box::new(create_column(dest_ty, 0));
+                    let array = Box::new(Column::create_and_fill_default(dest_ty, 0));
                     Some(Value::Column(Column::Array {
                         array,
-                        offsets: vec![0..0; *len],
+                        offsets: vec![0..0; len],
                     }))
                 }
                 (Column::Nullable { column, nulls }, DataType::Nullable(dest_ty)) => {
                     let column = self
-                        .run_cast(ValueRef::Column(&**column), &*dest_ty)?
+                        .run_cast(Value::Column(*column), &*dest_ty)?
                         .into_column()
                         .ok()
                         .unwrap();
                     Some(Value::Column(Column::Nullable {
                         column: Box::new(column),
-                        nulls: nulls.clone(),
+                        nulls,
                     }))
                 }
-                (_, DataType::Nullable(dest_ty)) => {
+                (col, DataType::Nullable(dest_ty)) => {
                     let column = self
-                        .run_cast(ValueRef::Column(*col), &*dest_ty)?
+                        .run_cast(Value::Column(col), &*dest_ty)?
                         .into_column()
                         .ok()
                         .unwrap();
@@ -107,13 +116,13 @@ impl Runtime {
                 }
                 (Column::Array { array, offsets }, DataType::Array(dest_ty)) => {
                     let array = self
-                        .run_cast(ValueRef::Column(&**array), &*dest_ty)?
+                        .run_cast(Value::Column(*array), &*dest_ty)?
                         .into_column()
                         .ok()
                         .unwrap();
                     Some(Value::Column(Column::Array {
                         array: Box::new(array),
-                        offsets: offsets.clone(),
+                        offsets,
                     }))
                 }
                 (Column::UInt8(column), DataType::UInt16) => Some(Value::Column(Column::UInt16(
@@ -125,6 +134,15 @@ impl Runtime {
                 (Column::UInt8(column), DataType::Int16) => Some(Value::Column(Column::Int16(
                     column.iter().map(|v| *v as i16).collect(),
                 ))),
+                (col @ Column::Boolean(_), DataType::Boolean)
+                | (col @ Column::String(_), DataType::String)
+                | (col @ Column::UInt8(_), DataType::UInt8)
+                | (col @ Column::Int8(_), DataType::Int8)
+                | (col @ Column::Int16(_), DataType::Int16)
+                | (col @ Column::Null { .. }, DataType::Null)
+                | (col @ Column::EmptyArray { .. }, DataType::EmptyArray) => {
+                    Some(Value::Column(col))
+                }
                 _ => None,
             },
         }
@@ -140,31 +158,5 @@ impl Runtime {
             Literal::Boolean(val) => Scalar::Boolean(*val),
             Literal::String(val) => Scalar::String(val.clone()),
         }
-    }
-}
-
-fn create_column(dest_ty: &DataType, len: usize) -> Column {
-    match dest_ty {
-        DataType::Null => Column::Null { len },
-        DataType::EmptyArray => Column::EmptyArray { len },
-        DataType::Boolean => Column::Boolean(vec![false; len]),
-        DataType::String => Column::String(vec![String::new(); len]),
-        DataType::UInt8 => Column::UInt8(vec![0; len]),
-        DataType::UInt16 => Column::UInt16(vec![0; len]),
-        DataType::Int8 => Column::Int8(vec![0; len]),
-        DataType::Int16 => Column::Int16(vec![0; len]),
-        DataType::Nullable(dest_ty) => Column::Nullable {
-            column: Box::new(create_column(dest_ty, len)),
-            nulls: vec![false; len],
-        },
-        DataType::Array(dest_ty) => Column::Array {
-            array: Box::new(create_column(dest_ty, len)),
-            offsets: vec![0..0; len],
-        },
-        DataType::Tuple(tys) => {
-            let fields = tys.iter().map(|ty| create_column(ty, len)).collect();
-            Column::Tuple { fields, len }
-        }
-        DataType::Generic(_) => unreachable!(),
     }
 }

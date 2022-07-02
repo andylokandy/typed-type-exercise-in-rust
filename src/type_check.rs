@@ -196,7 +196,10 @@ pub fn unify(src_ty: &DataType, dest_ty: &DataType) -> Option<Subsitution> {
     match (src_ty, dest_ty) {
         (DataType::Generic(_), _) => unreachable!("source type must not contain generic type"),
         (ty, DataType::Generic(idx)) => Some(Subsitution::equation(*idx, ty.clone())),
+        (DataType::Null, DataType::Nullable(_)) => Some(Subsitution::empty()),
+        (DataType::EmptyArray, DataType::Array(_)) => Some(Subsitution::empty()),
         (DataType::Nullable(src_ty), DataType::Nullable(dest_ty)) => unify(src_ty, dest_ty),
+        (src_ty, DataType::Nullable(dest_ty)) => unify(src_ty, dest_ty),
         (DataType::Array(src_ty), DataType::Array(dest_ty)) => unify(src_ty, dest_ty),
         (DataType::Tuple(src_tys), DataType::Tuple(dest_tys))
             if src_tys.len() == dest_tys.len() =>
@@ -212,7 +215,6 @@ pub fn unify(src_ty: &DataType, dest_ty: &DataType) -> Option<Subsitution> {
                 .unwrap_or_else(Subsitution::empty);
             Some(subst)
         }
-        (src_ty, DataType::Nullable(dest_ty)) => unify(src_ty, dest_ty),
         (src_ty, dest_ty) if can_cast_to(src_ty, dest_ty) => Some(Subsitution::empty()),
         _ => None,
     }
@@ -238,6 +240,7 @@ pub fn common_super_type(ty1: DataType, ty2: DataType) -> Option<DataType> {
         (ty1, ty2) if ty1 == ty2 => Some(ty1),
         (DataType::Null, ty @ DataType::Nullable(_))
         | (ty @ DataType::Nullable(_), DataType::Null) => Some(ty),
+        (DataType::Null, ty) | (ty, DataType::Null) => Some(DataType::Nullable(Box::new(ty))),
         (DataType::Nullable(box ty1), DataType::Nullable(box ty2))
         | (DataType::Nullable(box ty1), ty2)
         | (ty1, DataType::Nullable(box ty2)) => {
@@ -245,9 +248,7 @@ pub fn common_super_type(ty1: DataType, ty2: DataType) -> Option<DataType> {
         }
         (DataType::EmptyArray, ty @ DataType::Array(_))
         | (ty @ DataType::Array(_), DataType::EmptyArray) => Some(ty),
-        (DataType::Array(box ty1), DataType::Array(box ty2))
-        | (DataType::Array(box ty1), ty2)
-        | (ty1, DataType::Array(box ty2)) => {
+        (DataType::Array(box ty1), DataType::Array(box ty2)) => {
             Some(DataType::Array(Box::new(common_super_type(ty1, ty2)?)))
         }
         (DataType::UInt8, DataType::UInt16) | (DataType::UInt16, DataType::UInt8) => {

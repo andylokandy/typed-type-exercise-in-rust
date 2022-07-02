@@ -205,11 +205,81 @@ fn main() {
 
     run_ast(
         &AST::FunctionCall {
-            name: "array".to_string(),
+            name: "create_array".to_string(),
             args: vec![],
             params: vec![],
         },
         [].into_iter().collect(),
+    );
+
+    run_ast(
+        &AST::FunctionCall {
+            name: "create_array".to_string(),
+            args: vec![
+                AST::Literal(Literal::Null),
+                AST::Literal(Literal::Boolean(true)),
+            ],
+            params: vec![],
+        },
+        [].into_iter().collect(),
+    );
+
+    run_ast(
+        &AST::FunctionCall {
+            name: "create_array".to_string(),
+            args: vec![
+                AST::ColumnRef {
+                    name: "a".to_string(),
+                    data_type: DataType::Int16,
+                    property: ValueProperty::default().not_null(true),
+                },
+                AST::ColumnRef {
+                    name: "b".to_string(),
+                    data_type: DataType::Int16,
+                    property: ValueProperty::default().not_null(true),
+                },
+            ],
+            params: vec![],
+        },
+        [
+            ("a".to_string(), Column::Int16(vec![0, 1, 2, 3, 4])),
+            ("b".to_string(), Column::Int16(vec![5, 6, 7, 8, 9])),
+        ]
+        .into_iter()
+        .collect(),
+    );
+
+    run_ast(
+        &AST::FunctionCall {
+            name: "create_array".to_string(),
+            args: vec![
+                AST::FunctionCall {
+                    name: "create_array".to_string(),
+                    args: vec![
+                        AST::ColumnRef {
+                            name: "a".to_string(),
+                            data_type: DataType::Int16,
+                            property: ValueProperty::default().not_null(true),
+                        },
+                        AST::ColumnRef {
+                            name: "b".to_string(),
+                            data_type: DataType::Int16,
+                            property: ValueProperty::default().not_null(true),
+                        },
+                    ],
+                    params: vec![],
+                },
+                AST::Literal(Literal::Null),
+                AST::Literal(Literal::Null),
+            ],
+            params: vec![],
+        },
+        [
+            ("a".to_string(), Column::Int16(vec![0, 1, 2, 3, 4])),
+            ("b".to_string(), Column::Int16(vec![5, 6, 7, 8, 9])),
+        ]
+        .into_iter()
+        .collect(),
     );
 
     run_ast(
@@ -356,21 +426,63 @@ fn builtin_functions() -> FunctionRegistry {
         }))
     });
 
-    registry.register_0_arg_core::<EmptyArrayType, _>("array", FunctionProperty::default(), |_| {
-        Value::Scalar(())
-    });
+    registry.register_0_arg_core::<EmptyArrayType, _>(
+        "create_array",
+        FunctionProperty::default(),
+        |_| Value::Scalar(()),
+    );
 
-    registry.register_function_factory("array", |_, args_type| {
+    registry.register_function_factory("create_array", |_, args_type| {
         Some(Arc::new(Function {
             signature: FunctionSignature {
-                name: "array",
+                name: "create_array",
                 args_type: vec![DataType::Generic(0); args_type.len()],
-                return_type: DataType::Generic(0),
+                return_type: DataType::Array(Box::new(DataType::Generic(0))),
                 property: FunctionProperty::default().preserve_not_null(true),
             },
-            eval: Box::new(|_args, _generics| todo!()),
+            eval: Box::new(|args, generics| {
+                let len = args.iter().find_map(|arg| match arg {
+                    ValueRef::Column(col) => Some(col.len()),
+                    _ => None,
+                });
+                if let Some(len) = len {
+                    let mut array = Column::create_and_fill_default(&generics[0], 0);
+                    for idx in 0..len {
+                        for arg in args {
+                            match arg {
+                                ValueRef::Scalar(scalar) => {
+                                    array.push((*scalar).clone());
+                                }
+                                ValueRef::Column(col) => {
+                                    array.push(col.slice_all().index(idx).to_owned());
+                                }
+                            }
+                        }
+                    }
+                    let offsets = (0..len)
+                        .map(|row| (args.len() * row)..(args.len() * (row + 1)))
+                        .collect();
+                    Value::Column(Column::Array {
+                        array: Box::new(array),
+                        offsets,
+                    })
+                } else {
+                    // All args are scalars, so we return a scalar as result
+                    let mut array = Column::create_and_fill_default(&generics[0], 0);
+                    for arg in args {
+                        match arg {
+                            ValueRef::Scalar(scalar) => {
+                                array.push((*scalar).clone());
+                            }
+                            ValueRef::Column(_) => unreachable!(),
+                        }
+                    }
+                    Value::Scalar(Scalar::Array(array))
+                }
+            }),
         }))
     });
+
     registry.register_2_arg::<ArrayType<GenericType<0>>, Int16Type, GenericType<0>, _>(
         "get",
         FunctionProperty::default(),
@@ -390,7 +502,6 @@ fn builtin_functions() -> FunctionRegistry {
                     ValueRef::Column(col) => Some(col.len()),
                     _ => None,
                 });
-
                 if let Some(len) = len {
                     let fields = args
                         .iter()
