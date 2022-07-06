@@ -56,6 +56,8 @@ pub trait ValueType: Sized + 'static {
 }
 
 pub trait ArgType: ValueType {
+    type ColumnIterator<'a>: Iterator<Item = Self::ScalarRef<'a>>;
+
     fn data_type() -> DataType;
     fn try_downcast_scalar<'a>(scalar: &'a Scalar) -> Option<Self::ScalarRef<'a>>;
     fn try_downcast_column<'a>(col: &'a Column) -> Option<Self::ColumnRef<'a>>;
@@ -75,18 +77,12 @@ pub trait ArgType: ValueType {
             Value::Column(col) => Value::Column(Self::upcast_column(col)),
         }
     }
-}
-
-pub trait ColumnViewer: ValueType {
-    type ColumnIterator<'a>: Iterator<Item = Self::ScalarRef<'a>>;
 
     fn column_len<'a>(col: Self::ColumnRef<'a>) -> usize;
     fn index_column<'a>(col: Self::ColumnRef<'a>, index: usize) -> Self::ScalarRef<'a>;
     fn slice_column<'a>(col: Self::ColumnRef<'a>, range: Range<usize>) -> Self::ColumnRef<'a>;
     fn iter_column<'a>(col: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a>;
-}
 
-pub trait ColumnBuilder: ValueType {
     fn create_column(capacity: usize, generics: &GenericMap) -> Self::Column;
     fn push_column(col: Self::Column, item: Self::Scalar) -> Self::Column;
     fn append_column(col: Self::Column, other: Self::Column) -> Self::Column;

@@ -3,8 +3,8 @@ use std::ops::Range;
 use crate::values::{Column, ColumnIterator, ColumnRef, Scalar, ScalarRef};
 
 use super::{
-    array::ArrayType, boolean::BooleanType, nullable::NullableType, ArgType, ColumnBuilder,
-    ColumnViewer, DataType, GenericMap, Int16Type, ValueType,
+    array::ArrayType, boolean::BooleanType, nullable::NullableType, ArgType, DataType, GenericMap,
+    Int16Type, ValueType,
 };
 
 pub struct GenericType<const INDEX: usize>;
@@ -33,6 +33,8 @@ impl<const INDEX: usize> ValueType for GenericType<INDEX> {
 }
 
 impl<const INDEX: usize> ArgType for GenericType<INDEX> {
+    type ColumnIterator<'a> = ColumnIterator<'a>;
+
     fn data_type() -> DataType {
         DataType::Generic(INDEX)
     }
@@ -52,10 +54,6 @@ impl<const INDEX: usize> ArgType for GenericType<INDEX> {
     fn upcast_column(col: Self::Column) -> Column {
         col
     }
-}
-
-impl<const INDEX: usize> ColumnViewer for GenericType<INDEX> {
-    type ColumnIterator<'a> = ColumnIterator<'a>;
 
     fn column_len<'a>(col: Self::ColumnRef<'a>) -> usize {
         col.len()
@@ -72,9 +70,7 @@ impl<const INDEX: usize> ColumnViewer for GenericType<INDEX> {
     fn iter_column<'a>(col: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a> {
         col.iter()
     }
-}
 
-impl<const INDEX: usize> ColumnBuilder for GenericType<INDEX> {
     fn create_column(capacity: usize, generics: &GenericMap) -> Self::Column {
         match &generics[INDEX] {
             DataType::Boolean => {

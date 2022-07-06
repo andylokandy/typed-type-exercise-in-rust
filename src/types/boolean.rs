@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use crate::values::{Column, Scalar};
 
-use super::{ArgType, ColumnBuilder, ColumnViewer, DataType, GenericMap, ValueType};
+use super::{ArgType, DataType, GenericMap, ValueType};
 
 pub struct BooleanType;
 
@@ -30,6 +30,8 @@ impl ValueType for BooleanType {
 }
 
 impl ArgType for BooleanType {
+    type ColumnIterator<'a> = std::iter::Cloned<std::slice::Iter<'a, bool>>;
+
     fn data_type() -> DataType {
         DataType::Boolean
     }
@@ -55,10 +57,6 @@ impl ArgType for BooleanType {
     fn upcast_column(col: Self::Column) -> Column {
         Column::Boolean(col)
     }
-}
-
-impl ColumnViewer for BooleanType {
-    type ColumnIterator<'a> = std::iter::Cloned<std::slice::Iter<'a, bool>>;
 
     fn column_len<'a>(col: Self::ColumnRef<'a>) -> usize {
         col.len()
@@ -75,9 +73,7 @@ impl ColumnViewer for BooleanType {
     fn iter_column<'a>(col: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a> {
         col.iter().cloned()
     }
-}
 
-impl ColumnBuilder for BooleanType {
     fn create_column(capacity: usize, _: &GenericMap) -> Self::Column {
         Vec::with_capacity(capacity)
     }

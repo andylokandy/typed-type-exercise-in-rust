@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use crate::values::{Column, Scalar};
 
-use super::{ArgType, ColumnBuilder, ColumnViewer, DataType, GenericMap, ValueType};
+use super::{ArgType, DataType, GenericMap, ValueType};
 
 pub struct Int16Type;
 
@@ -30,6 +30,8 @@ impl ValueType for Int16Type {
 }
 
 impl ArgType for Int16Type {
+    type ColumnIterator<'a> = std::iter::Cloned<std::slice::Iter<'a, i16>>;
+
     fn data_type() -> DataType {
         DataType::Int16
     }
@@ -55,10 +57,6 @@ impl ArgType for Int16Type {
     fn upcast_column(col: Self::Column) -> Column {
         Column::Int16(col)
     }
-}
-
-impl ColumnViewer for Int16Type {
-    type ColumnIterator<'a> = std::iter::Cloned<std::slice::Iter<'a, i16>>;
 
     fn column_len<'a>(col: Self::ColumnRef<'a>) -> usize {
         col.len()
@@ -75,9 +73,7 @@ impl ColumnViewer for Int16Type {
     fn iter_column<'a>(col: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a> {
         col.iter().cloned()
     }
-}
 
-impl ColumnBuilder for Int16Type {
     fn create_column(capacity: usize, _: &GenericMap) -> Self::Column {
         Vec::with_capacity(capacity)
     }

@@ -2,7 +2,7 @@ use std::{marker::PhantomData, ops::Range};
 
 use crate::values::{Column, Scalar};
 
-use super::{ArgType, ColumnBuilder, ColumnViewer, DataType, GenericMap, ValueType};
+use super::{ArgType, DataType, GenericMap, ValueType};
 
 pub struct NullableType<T: ValueType>(PhantomData<T>);
 
@@ -38,6 +38,8 @@ impl<T: ArgType> ArgType for NullableType<T>
 where
     T::Scalar: Default,
 {
+    type ColumnIterator<'a> = NullableIterator<'a, T>;
+
     fn data_type() -> DataType {
         DataType::Nullable(Box::new(T::data_type()))
     }
@@ -69,13 +71,6 @@ where
             nulls,
         }
     }
-}
-
-impl<T: ColumnViewer> ColumnViewer for NullableType<T>
-where
-    T::Scalar: Default,
-{
-    type ColumnIterator<'a> = NullableIterator<'a, T>;
 
     fn column_len<'a>((_, nulls): Self::ColumnRef<'a>) -> usize {
         nulls.len()
@@ -103,33 +98,7 @@ where
             nulls: nulls.iter(),
         }
     }
-}
 
-pub struct NullableIterator<'a, T: ColumnViewer> {
-    iter: T::ColumnIterator<'a>,
-    nulls: std::slice::Iter<'a, bool>,
-}
-
-impl<'a, T: ColumnViewer> Iterator for NullableIterator<'a, T> {
-    type Item = Option<T::ScalarRef<'a>>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().zip(self.nulls.next()).map(
-            |(scalar, is_null)| {
-                if *is_null {
-                    None
-                } else {
-                    Some(scalar)
-                }
-            },
-        )
-    }
-}
-
-impl<T: ColumnBuilder> ColumnBuilder for NullableType<T>
-where
-    T::Scalar: Default,
-{
     fn create_column(capacity: usize, generics: &GenericMap) -> Self::Column {
         (
             T::create_column(capacity, generics),
@@ -158,5 +127,26 @@ where
         let col = T::append_column(col, other_col);
         nulls.append(&mut other_nulls);
         (col, nulls)
+    }
+}
+
+pub struct NullableIterator<'a, T: ArgType> {
+    iter: T::ColumnIterator<'a>,
+    nulls: std::slice::Iter<'a, bool>,
+}
+
+impl<'a, T: ArgType> Iterator for NullableIterator<'a, T> {
+    type Item = Option<T::ScalarRef<'a>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().zip(self.nulls.next()).map(
+            |(scalar, is_null)| {
+                if *is_null {
+                    None
+                } else {
+                    Some(scalar)
+                }
+            },
+        )
     }
 }

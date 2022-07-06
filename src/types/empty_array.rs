@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use crate::values::{Column, Scalar};
 
-use super::{ArgType, ColumnBuilder, ColumnViewer, DataType, GenericMap, ValueType};
+use super::{ArgType, DataType, GenericMap, ValueType};
 
 pub struct EmptyArrayType;
 
@@ -30,6 +30,8 @@ impl ValueType for EmptyArrayType {
 }
 
 impl ArgType for EmptyArrayType {
+    type ColumnIterator<'a> = std::iter::Take<std::iter::Repeat<()>>;
+
     fn data_type() -> DataType {
         DataType::EmptyArray
     }
@@ -55,10 +57,6 @@ impl ArgType for EmptyArrayType {
     fn upcast_column(len: Self::Column) -> Column {
         Column::EmptyArray { len }
     }
-}
-
-impl ColumnViewer for EmptyArrayType {
-    type ColumnIterator<'a> = std::iter::Take<std::iter::Repeat<()>>;
 
     fn column_len<'a>(len: Self::ColumnRef<'a>) -> usize {
         len
@@ -81,9 +79,7 @@ impl ColumnViewer for EmptyArrayType {
     fn iter_column<'a>(len: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a> {
         std::iter::repeat(()).take(len)
     }
-}
 
-impl ColumnBuilder for EmptyArrayType {
     fn create_column(_capacity: usize, _: &GenericMap) -> Self::Column {
         0
     }

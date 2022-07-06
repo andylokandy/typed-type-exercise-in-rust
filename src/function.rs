@@ -133,7 +133,7 @@ impl FunctionRegistry {
             }));
     }
 
-    pub fn register_1_arg<I1: ArgType + ColumnViewer, O: ArgType + ColumnBuilder, F>(
+    pub fn register_1_arg<I1: ArgType, O: ArgType, F>(
         &mut self,
         name: &'static str,
         property: FunctionProperty,
@@ -192,12 +192,7 @@ impl FunctionRegistry {
             }));
     }
 
-    pub fn register_2_arg<
-        I1: ArgType + ColumnViewer,
-        I2: ArgType + ColumnViewer,
-        O: ArgType + ColumnBuilder,
-        F,
-    >(
+    pub fn register_2_arg<I1: ArgType, I2: ArgType, O: ArgType, F>(
         &mut self,
         name: &'static str,
         property: FunctionProperty,
@@ -340,7 +335,7 @@ fn erase_function_generic_2_arg<I1: ArgType, I2: ArgType, O: ArgType>(
     }
 }
 
-pub fn vectorize_1_arg<'a, I1: ColumnViewer, O: ColumnBuilder>(
+pub fn vectorize_1_arg<'a, I1: ArgType, O: ArgType>(
     val: ValueRef<'a, I1>,
     generics: &GenericMap,
     func: impl for<'for_a> Fn(I1::ScalarRef<'for_a>) -> O::Scalar,
@@ -355,7 +350,7 @@ pub fn vectorize_1_arg<'a, I1: ColumnViewer, O: ColumnBuilder>(
     }
 }
 
-pub fn vectorize_2_arg<'a, 'b, I1: ColumnViewer, I2: ColumnViewer, O: ColumnBuilder>(
+pub fn vectorize_2_arg<'a, 'b, I1: ArgType, I2: ArgType, O: ArgType>(
     lhs: ValueRef<'a, I1>,
     rhs: ValueRef<'b, I2>,
     generics: &GenericMap,
@@ -383,7 +378,7 @@ pub fn vectorize_2_arg<'a, 'b, I1: ColumnViewer, I2: ColumnViewer, O: ColumnBuil
     }
 }
 
-pub fn vectorize_passthrough_nullable_1_arg<'a, I1: ColumnViewer, O: ColumnBuilder>(
+pub fn vectorize_passthrough_nullable_1_arg<'a, I1: ArgType, O: ArgType>(
     val: ValueRef<'a, NullableType<I1>>,
     generics: &GenericMap,
     func: impl for<'for_a> Fn(I1::ScalarRef<'for_a>) -> O::Scalar,
@@ -403,13 +398,7 @@ where
     }
 }
 
-pub fn vectorize_passthrough_nullable_2_arg<
-    'a,
-    'b,
-    I1: ColumnViewer,
-    I2: ColumnViewer,
-    O: ColumnBuilder,
->(
+pub fn vectorize_passthrough_nullable_2_arg<'a, 'b, I1: ArgType, I2: ArgType, O: ArgType>(
     lhs: ValueRef<'a, NullableType<I1>>,
     rhs: ValueRef<'b, NullableType<I2>>,
     generics: &GenericMap,

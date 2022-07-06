@@ -2,7 +2,7 @@ use std::{marker::PhantomData, ops::Range};
 
 use crate::values::{Column, Scalar};
 
-use super::{ArgType, ColumnBuilder, ColumnViewer, DataType, GenericMap, ValueType};
+use super::{ArgType, DataType, GenericMap, ValueType};
 
 pub struct ArrayType<T: ArgType>(PhantomData<T>);
 
@@ -30,6 +30,8 @@ impl<T: ArgType> ValueType for ArrayType<T> {
 }
 
 impl<T: ArgType> ArgType for ArrayType<T> {
+    type ColumnIterator<'a> = ArrayIterator<'a, T>;
+
     fn data_type() -> DataType {
         DataType::Array(Box::new(T::data_type()))
     }
@@ -58,10 +60,6 @@ impl<T: ArgType> ArgType for ArrayType<T> {
             offsets,
         }
     }
-}
-
-impl<T: ArgType + ColumnViewer> ColumnViewer for ArrayType<T> {
-    type ColumnIterator<'a> = ArrayIterator<'a, T>;
 
     fn column_len<'a>((_, offsets): Self::ColumnRef<'a>) -> usize {
         offsets.len()
@@ -84,24 +82,7 @@ impl<T: ArgType + ColumnViewer> ColumnViewer for ArrayType<T> {
             offsets: offsets.iter(),
         }
     }
-}
 
-pub struct ArrayIterator<'a, T: ColumnViewer> {
-    col: T::ColumnRef<'a>,
-    offsets: std::slice::Iter<'a, Range<usize>>,
-}
-
-impl<'a, T: ColumnViewer> Iterator for ArrayIterator<'a, T> {
-    type Item = T::ColumnRef<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.offsets
-            .next()
-            .map(|range| T::slice_column(self.col.clone(), range.clone()))
-    }
-}
-
-impl<T: ArgType + ColumnViewer + ColumnBuilder> ColumnBuilder for ArrayType<T> {
     fn create_column(capacity: usize, generics: &GenericMap) -> Self::Column {
         (
             T::create_column(capacity, generics),
@@ -129,5 +110,20 @@ impl<T: ArgType + ColumnViewer + ColumnBuilder> ColumnBuilder for ArrayType<T> {
         );
         let col = T::append_column(col, other_col);
         (col, offsets)
+    }
+}
+
+pub struct ArrayIterator<'a, T: ArgType> {
+    col: T::ColumnRef<'a>,
+    offsets: std::slice::Iter<'a, Range<usize>>,
+}
+
+impl<'a, T: ArgType> Iterator for ArrayIterator<'a, T> {
+    type Item = T::ColumnRef<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.offsets
+            .next()
+            .map(|range| T::slice_column(self.col.clone(), range.clone()))
     }
 }
