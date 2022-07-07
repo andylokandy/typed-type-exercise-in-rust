@@ -87,28 +87,24 @@ impl ArgType for BooleanType {
         builder.len()
     }
 
-    fn push_item(
-        mut builder: Self::ColumnBuilder,
-        item: Self::ScalarRef<'_>,
-    ) -> Self::ColumnBuilder {
+    fn push_item(builder: &mut Self::ColumnBuilder, item: Self::ScalarRef<'_>) {
         builder.push(item);
-        builder
     }
 
-    fn push_default(mut builder: Self::ColumnBuilder) -> Self::ColumnBuilder {
+    fn push_default(builder: &mut Self::ColumnBuilder) {
         builder.push(false);
-        builder
     }
 
-    fn append_builder(
-        mut builder: Self::ColumnBuilder,
-        other_builder: Self::ColumnBuilder,
-    ) -> Self::ColumnBuilder {
+    fn append_builder(builder: &mut Self::ColumnBuilder, other_builder: &Self::ColumnBuilder) {
         builder.extend_from_slice(other_builder.as_slice(), 0, other_builder.len());
-        builder
     }
 
     fn build_column(builder: Self::ColumnBuilder) -> Self::Column {
         builder.into()
+    }
+
+    fn build_scalar(builder: Self::ColumnBuilder) -> Self::Scalar {
+        assert_eq!(builder.len(), 1);
+        builder.get(0)
     }
 }

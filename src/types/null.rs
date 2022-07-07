@@ -88,22 +88,23 @@ impl ArgType for NullType {
         *len
     }
 
-    fn push_item(len: Self::ColumnBuilder, _item: Self::Scalar) -> Self::ColumnBuilder {
-        len + 1
+    fn push_item(len: &mut Self::ColumnBuilder, _item: Self::Scalar) {
+        *len += 1
     }
 
-    fn push_default(len: Self::ColumnBuilder) -> Self::ColumnBuilder {
-        len + 1
+    fn push_default(len: &mut Self::ColumnBuilder) {
+        *len += 1
     }
 
-    fn append_builder(
-        len: Self::ColumnBuilder,
-        other_len: Self::ColumnBuilder,
-    ) -> Self::ColumnBuilder {
-        len + other_len
+    fn append_builder(len: &mut Self::ColumnBuilder, other_len: &Self::ColumnBuilder) {
+        *len += other_len
     }
 
     fn build_column(len: Self::ColumnBuilder) -> Self::Column {
         len
+    }
+
+    fn build_scalar(len: Self::ColumnBuilder) -> Self::Scalar {
+        assert_eq!(len, 1);
     }
 }

@@ -72,28 +72,23 @@ impl<const INDEX: usize> ArgType for GenericType<INDEX> {
         builder.len()
     }
 
-    fn push_item(
-        mut builder: Self::ColumnBuilder,
-        item: Self::ScalarRef<'_>,
-    ) -> Self::ColumnBuilder {
+    fn push_item(builder: &mut Self::ColumnBuilder, item: Self::ScalarRef<'_>) {
         builder.push(item);
-        builder
     }
 
-    fn push_default(mut builder: Self::ColumnBuilder) -> Self::ColumnBuilder {
+    fn push_default(builder: &mut Self::ColumnBuilder) {
         builder.push_default();
-        builder
     }
 
-    fn append_builder(
-        mut builder: Self::ColumnBuilder,
-        other: Self::ColumnBuilder,
-    ) -> Self::ColumnBuilder {
-        builder.append(&other);
-        builder
+    fn append_builder(builder: &mut Self::ColumnBuilder, other: &Self::ColumnBuilder) {
+        builder.append(other);
     }
 
     fn build_column(builder: Self::ColumnBuilder) -> Self::Column {
         builder.build()
+    }
+
+    fn build_scalar(builder: Self::ColumnBuilder) -> Self::Scalar {
+        builder.build_scalar()
     }
 }

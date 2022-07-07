@@ -560,10 +560,10 @@ fn builtin_functions() -> FunctionRegistry {
         }))
     });
 
-    registry.register_2_arg::<ArrayType<GenericType<0>>, Int16Type, GenericType<0>, _>(
+    registry.register_with_writer_2_arg::<ArrayType<GenericType<0>>, Int16Type, GenericType<0>, _>(
         "get",
         FunctionProperty::default(),
-        |array, idx| array.index(idx as usize).to_owned(),
+        |array, idx, output| output.push(array.index(idx as usize)),
     );
 
     registry.register_function_factory("create_tuple", |_, args_type| {

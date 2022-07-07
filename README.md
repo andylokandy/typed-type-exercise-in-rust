@@ -27,10 +27,10 @@ registry.register_2_arg::<BooleanType, BooleanType, BooleanType, _>(
 Define a generic function `get` which returns an item of an array by the index:
 
 ```rust
-registry.register_2_arg::<ArrayType<GenericType<0>>, Int16Type, GenericType<0>, _>(
+registry.register_with_writer_2_arg::<ArrayType<GenericType<0>>, Int16Type, GenericType<0>, _>(
     "get",
     FunctionProperty::default(),
-    |array, idx| array.index(idx as usize).to_owned(),
+    |array, idx, output| output.push(array.index(idx as usize)),
 );
 ```
 

@@ -85,7 +85,7 @@ pub trait ArgType: ValueType {
     ) -> Self::Column {
         let mut col = Self::create_builder(iter.size_hint().0, generics);
         for item in iter {
-            col = Self::push_item(col, Self::to_scalar_ref(&item));
+            Self::push_item(&mut col, Self::to_scalar_ref(&item));
         }
         Self::build_column(col)
     }
@@ -93,11 +93,9 @@ pub trait ArgType: ValueType {
     fn create_builder(capacity: usize, generics: &GenericMap) -> Self::ColumnBuilder;
     fn column_to_builder(col: Self::Column) -> Self::ColumnBuilder;
     fn builder_len(builder: &Self::ColumnBuilder) -> usize;
-    fn push_item(builder: Self::ColumnBuilder, item: Self::ScalarRef<'_>) -> Self::ColumnBuilder;
-    fn push_default(builder: Self::ColumnBuilder) -> Self::ColumnBuilder;
-    fn append_builder(
-        builder: Self::ColumnBuilder,
-        other_builder: Self::ColumnBuilder,
-    ) -> Self::ColumnBuilder;
+    fn push_item(builder: &mut Self::ColumnBuilder, item: Self::ScalarRef<'_>);
+    fn push_default(builder: &mut Self::ColumnBuilder);
+    fn append_builder(builder: &mut Self::ColumnBuilder, other_builder: &Self::ColumnBuilder);
     fn build_column(builder: Self::ColumnBuilder) -> Self::Column;
+    fn build_scalar(builder: Self::ColumnBuilder) -> Self::Scalar;
 }
