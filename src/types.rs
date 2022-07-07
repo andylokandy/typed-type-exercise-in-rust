@@ -9,6 +9,7 @@ pub mod nullable;
 
 pub use any::AnyType;
 pub use array::ArrayType;
+use arrow2::trusted_len::TrustedLen;
 pub use boolean::BooleanType;
 pub use empty_array::EmptyArrayType;
 pub use generic::GenericType;
@@ -53,7 +54,7 @@ pub trait ValueType: Sized + 'static {
 }
 
 pub trait ArgType: ValueType {
-    type ColumnIterator<'a>: Iterator<Item = Self::ScalarRef<'a>>;
+    type ColumnIterator<'a>: Iterator<Item = Self::ScalarRef<'a>> + TrustedLen;
     type ColumnBuilder;
 
     fn data_type() -> DataType;

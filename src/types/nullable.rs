@@ -1,6 +1,9 @@
 use std::{marker::PhantomData, ops::Range};
 
-use arrow2::bitmap::{Bitmap, MutableBitmap};
+use arrow2::{
+    bitmap::{Bitmap, MutableBitmap},
+    trusted_len::TrustedLen,
+};
 
 use crate::{
     util::bitmap_into_mut,
@@ -158,4 +161,11 @@ impl<'a, T: ArgType> Iterator for NullableIterator<'a, T> {
             },
         )
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        assert_eq!(self.iter.size_hint(), self.validity.size_hint());
+        self.validity.size_hint()
+    }
 }
+
+unsafe impl<'a, T: ArgType> TrustedLen for NullableIterator<'a, T> {}

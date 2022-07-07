@@ -3,6 +3,7 @@ use std::ops::Range;
 use arrow2::{
     bitmap::{Bitmap, MutableBitmap},
     buffer::Buffer,
+    trusted_len::TrustedLen,
 };
 use enum_as_inner::EnumAsInner;
 
@@ -554,4 +555,11 @@ impl<'a> Iterator for ColumnIterator<'a> {
             None
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remain = self.len - self.index;
+        (remain, Some(remain))
+    }
 }
+
+unsafe impl<'a> TrustedLen for ColumnIterator<'a> {}
