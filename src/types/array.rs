@@ -88,40 +88,40 @@ impl<T: ArgType> ArgType for ArrayType<T> {
         offsets.len()
     }
 
-    fn push_item(
-        (builder, mut offsets): Self::ColumnBuilder,
-        item: Self::ScalarRef<'_>,
-    ) -> Self::ColumnBuilder {
-        let begin = T::builder_len(&builder);
+    fn push_item((builder, offsets): &mut Self::ColumnBuilder, item: Self::ScalarRef<'_>) {
+        let begin = T::builder_len(builder);
         let end = begin + T::column_len(&item);
         offsets.push(begin..end);
         let other_col = T::column_to_builder(item);
-        let builder = T::append_builder(builder, other_col);
-        (builder, offsets)
+        T::append_builder(builder, &other_col);
     }
 
-    fn push_default((builder, mut offsets): Self::ColumnBuilder) -> Self::ColumnBuilder {
-        let begin = T::builder_len(&builder);
+    fn push_default((builder, offsets): &mut Self::ColumnBuilder) {
+        let begin = T::builder_len(builder);
         offsets.push(begin..begin);
-        (builder, offsets)
     }
 
     fn append_builder(
-        (builder, mut offsets): Self::ColumnBuilder,
-        (other_builder, other_offsets): Self::ColumnBuilder,
-    ) -> Self::ColumnBuilder {
+        (builder, offsets): &mut Self::ColumnBuilder,
+        (other_builder, other_offsets): &Self::ColumnBuilder,
+    ) {
         let end = offsets.iter().map(|range| range.end).max().unwrap_or(0);
         offsets.extend(
             other_offsets
                 .iter()
                 .map(|range| range.start + end..range.end + end),
         );
-        let builder = T::append_builder(builder, other_builder);
-        (builder, offsets)
+        T::append_builder(builder, other_builder);
     }
 
     fn build_column((builder, offsets): Self::ColumnBuilder) -> Self::Column {
+        // TODO: check that they have same length
         (T::build_column(builder), offsets)
+    }
+
+    fn build_scalar((builder, offsets): Self::ColumnBuilder) -> Self::Scalar {
+        assert_eq!(offsets.len(), 1);
+        T::slice_column(&T::build_column(builder), offsets[0].clone())
     }
 }
 

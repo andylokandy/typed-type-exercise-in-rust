@@ -535,6 +535,66 @@ impl ColumnBuilder {
             },
         }
     }
+
+    pub fn build_scalar(self) -> Scalar {
+        match self {
+            ColumnBuilder::Null { len } => {
+                assert_eq!(len, 1);
+                Scalar::Null
+            }
+            ColumnBuilder::EmptyArray { len } => {
+                assert_eq!(len, 1);
+                Scalar::EmptyArray
+            }
+            ColumnBuilder::Int8(builder) => {
+                assert_eq!(builder.len(), 1);
+                Scalar::Int8(builder[0])
+            }
+            ColumnBuilder::Int16(builder) => {
+                assert_eq!(builder.len(), 1);
+                Scalar::Int16(builder[0])
+            }
+            ColumnBuilder::UInt8(builder) => {
+                assert_eq!(builder.len(), 1);
+                Scalar::UInt8(builder[0])
+            }
+            ColumnBuilder::UInt16(builder) => {
+                assert_eq!(builder.len(), 1);
+                Scalar::UInt16(builder[0])
+            }
+            ColumnBuilder::Boolean(builder) => {
+                assert_eq!(builder.len(), 1);
+                Scalar::Boolean(builder.get(0))
+            }
+            ColumnBuilder::String(mut builder) => {
+                assert_eq!(builder.len(), 1);
+                Scalar::String(builder.remove(0))
+            }
+            ColumnBuilder::Array { array, offsets } => {
+                assert_eq!(array.len(), 1);
+                assert_eq!(offsets.len(), 1);
+                Scalar::Array(array.build())
+            }
+            ColumnBuilder::Nullable { column, validity } => {
+                assert_eq!(column.len(), 1);
+                assert_eq!(validity.len(), 1);
+                if validity.get(0) {
+                    column.build_scalar()
+                } else {
+                    Scalar::Null
+                }
+            }
+            ColumnBuilder::Tuple { fields, len } => {
+                assert_eq!(len, 1);
+                Scalar::Tuple(
+                    fields
+                        .into_iter()
+                        .map(|field| field.build_scalar())
+                        .collect(),
+                )
+            }
+        }
+    }
 }
 
 pub struct ColumnIterator<'a> {
