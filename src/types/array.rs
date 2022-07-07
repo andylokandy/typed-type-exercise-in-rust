@@ -74,8 +74,8 @@ impl<T: ArgType> ArgType for ArrayType<T> {
         }
     }
 
-    fn create_builer(_capacity: usize, generics: &GenericMap) -> Self::ColumnBuilder {
-        (T::create_builer(0, generics), Vec::with_capacity(0))
+    fn create_builder(_capacity: usize, generics: &GenericMap) -> Self::ColumnBuilder {
+        (T::create_builder(0, generics), Vec::with_capacity(0))
     }
 
     fn column_to_builder((col, offsets): Self::Column) -> Self::ColumnBuilder {

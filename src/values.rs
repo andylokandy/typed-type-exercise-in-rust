@@ -8,7 +8,7 @@ use enum_as_inner::EnumAsInner;
 
 use crate::{
     types::*,
-    util::{append_bitmap, bitmap_into_mut, constant_bitmap},
+    util::{append_bitmap, bitmap_into_mut, buffer_into_mut, constant_bitmap},
 };
 
 #[derive(EnumAsInner)]
@@ -271,7 +271,7 @@ impl Column {
             }
             Column::String(col) => Column::String(col[range].to_vec()),
             Column::Array { array, offsets } => {
-                let offsets = offsets[range.clone()].to_vec();
+                let offsets = offsets[range].to_vec();
                 Column::Array {
                     array: array.clone(),
                     offsets,
@@ -308,12 +308,12 @@ impl ColumnBuilder {
         match col {
             Column::Null { len } => ColumnBuilder::Null { len },
             Column::EmptyArray { len } => ColumnBuilder::EmptyArray { len },
-            Column::Int8(col) => ColumnBuilder::Int8(col.to_vec()),
-            Column::Int16(col) => ColumnBuilder::Int16(col.to_vec()),
-            Column::UInt8(col) => ColumnBuilder::UInt8(col.to_vec()),
-            Column::UInt16(col) => ColumnBuilder::UInt16(col.to_vec()),
+            Column::Int8(col) => ColumnBuilder::Int8(buffer_into_mut(col)),
+            Column::Int16(col) => ColumnBuilder::Int16(buffer_into_mut(col)),
+            Column::UInt8(col) => ColumnBuilder::UInt8(buffer_into_mut(col)),
+            Column::UInt16(col) => ColumnBuilder::UInt16(buffer_into_mut(col)),
             Column::Boolean(col) => ColumnBuilder::Boolean(bitmap_into_mut(col)),
-            Column::String(col) => ColumnBuilder::String(col.to_vec()),
+            Column::String(col) => ColumnBuilder::String(col),
             Column::Array { array, offsets } => ColumnBuilder::Array {
                 array: Box::new(ColumnBuilder::from_column(*array)),
                 offsets,

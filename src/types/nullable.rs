@@ -87,9 +87,9 @@ impl<T: ArgType> ArgType for NullableType<T> {
         }
     }
 
-    fn create_builer(capacity: usize, generics: &GenericMap) -> Self::ColumnBuilder {
+    fn create_builder(capacity: usize, generics: &GenericMap) -> Self::ColumnBuilder {
         (
-            T::create_builer(capacity, generics),
+            T::create_builder(capacity, generics),
             MutableBitmap::with_capacity(capacity),
         )
     }

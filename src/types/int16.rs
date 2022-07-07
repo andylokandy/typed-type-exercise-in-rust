@@ -2,7 +2,10 @@ use std::ops::Range;
 
 use arrow2::buffer::Buffer;
 
-use crate::values::{Column, Scalar};
+use crate::{
+    util::buffer_into_mut,
+    values::{Column, Scalar},
+};
 
 use super::{ArgType, DataType, GenericMap, ValueType};
 
@@ -72,12 +75,12 @@ impl ArgType for Int16Type {
         iter.collect()
     }
 
-    fn create_builer(capacity: usize, _generics: &GenericMap) -> Self::ColumnBuilder {
+    fn create_builder(capacity: usize, _generics: &GenericMap) -> Self::ColumnBuilder {
         Vec::with_capacity(capacity)
     }
 
     fn column_to_builder(col: Self::Column) -> Self::ColumnBuilder {
-        col.to_vec()
+        buffer_into_mut(col)
     }
 
     fn builder_len(builder: &Self::ColumnBuilder) -> usize {

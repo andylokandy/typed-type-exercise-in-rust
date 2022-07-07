@@ -60,7 +60,7 @@ impl<const INDEX: usize> ArgType for GenericType<INDEX> {
         col.iter()
     }
 
-    fn create_builer(capacity: usize, generics: &GenericMap) -> Self::ColumnBuilder {
+    fn create_builder(capacity: usize, generics: &GenericMap) -> Self::ColumnBuilder {
         ColumnBuilder::with_capacity(&generics[INDEX], capacity)
     }
 

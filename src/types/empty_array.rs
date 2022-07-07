@@ -76,7 +76,7 @@ impl ArgType for EmptyArrayType {
         iter.count()
     }
 
-    fn create_builer(_capacity: usize, _generics: &GenericMap) -> Self::ColumnBuilder {
+    fn create_builder(_capacity: usize, _generics: &GenericMap) -> Self::ColumnBuilder {
         0
     }
 

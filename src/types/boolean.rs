@@ -75,7 +75,7 @@ impl ArgType for BooleanType {
         iter.collect()
     }
 
-    fn create_builer(capacity: usize, _: &GenericMap) -> Self::ColumnBuilder {
+    fn create_builder(capacity: usize, _: &GenericMap) -> Self::ColumnBuilder {
         MutableBitmap::with_capacity(capacity)
     }
 

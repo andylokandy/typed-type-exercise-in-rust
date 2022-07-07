@@ -82,14 +82,14 @@ pub trait ArgType: ValueType {
         iter: impl Iterator<Item = Self::Scalar>,
         generics: &GenericMap,
     ) -> Self::Column {
-        let mut col = Self::create_builer(iter.size_hint().0, generics);
+        let mut col = Self::create_builder(iter.size_hint().0, generics);
         for item in iter {
             col = Self::push_item(col, Self::to_scalar_ref(&item));
         }
         Self::build_column(col)
     }
 
-    fn create_builer(capacity: usize, generics: &GenericMap) -> Self::ColumnBuilder;
+    fn create_builder(capacity: usize, generics: &GenericMap) -> Self::ColumnBuilder;
     fn column_to_builder(col: Self::Column) -> Self::ColumnBuilder;
     fn builder_len(builder: &Self::ColumnBuilder) -> usize;
     fn push_item(builder: Self::ColumnBuilder, item: Self::ScalarRef<'_>) -> Self::ColumnBuilder;
