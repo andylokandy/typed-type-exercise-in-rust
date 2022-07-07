@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::{iter::once, ops::Range};
 
 use arrow2::{
     bitmap::{Bitmap, MutableBitmap},
@@ -70,7 +70,7 @@ pub enum Column {
     String(Vec<String>),
     Array {
         array: Box<Column>,
-        offsets: Vec<Range<usize>>,
+        offsets: Vec<usize>,
     },
     Nullable {
         column: Box<Column>,
@@ -98,7 +98,7 @@ pub enum ColumnBuilder {
     String(Vec<String>),
     Array {
         array: Box<ColumnBuilder>,
-        offsets: Vec<Range<usize>>,
+        offsets: Vec<usize>,
     },
     Nullable {
         column: Box<ColumnBuilder>,
@@ -182,11 +182,19 @@ impl<'a> ScalarRef<'a> {
             ScalarRef::UInt16(i) => ColumnBuilder::UInt16(vec![*i; n]),
             ScalarRef::Boolean(b) => ColumnBuilder::Boolean(constant_bitmap(*b, n)),
             ScalarRef::String(s) => ColumnBuilder::String(vec![s.to_string(); n]),
-            ScalarRef::Array(col) => ColumnBuilder::Array {
-                array: Box::new(ColumnBuilder::from_column(col.clone())),
-                // TODO: use arrow offsets
-                offsets: vec![0..col.len(); n],
-            },
+            ScalarRef::Array(col) => {
+                let col = ColumnBuilder::from_column(col.clone());
+                let len = col.len();
+                let mut builder = col.clone();
+                for _ in 1..n {
+                    builder.append(&col);
+                }
+                let offsets = once(0).chain((0..n).map(|i| len * (i + 1))).collect();
+                ColumnBuilder::Array {
+                    array: Box::new(builder),
+                    offsets,
+                }
+            }
             ScalarRef::Tuple(fields) => ColumnBuilder::Tuple {
                 fields: fields.iter().map(|field| field.repeat(n)).collect(),
                 len: n,
@@ -206,7 +214,7 @@ impl Column {
             Column::UInt16(col) => col.len(),
             Column::Boolean(col) => col.len(),
             Column::String(col) => col.len(),
-            Column::Array { array: _, offsets } => offsets.len(),
+            Column::Array { array: _, offsets } => offsets.len() - 1,
             Column::Nullable {
                 column: _,
                 validity,
@@ -226,7 +234,7 @@ impl Column {
             Column::Boolean(col) => ScalarRef::Boolean(col.get(index).unwrap()),
             Column::String(col) => ScalarRef::String(&col[index]),
             Column::Array { array, offsets } => {
-                ScalarRef::Array((*array).clone().slice(offsets[index].clone()))
+                ScalarRef::Array((*array).clone().slice(offsets[index]..offsets[index + 1]))
             }
             Column::Nullable { column, validity } => {
                 if validity.get(index).unwrap() {
@@ -272,7 +280,7 @@ impl Column {
             }
             Column::String(col) => Column::String(col[range].to_vec()),
             Column::Array { array, offsets } => {
-                let offsets = offsets[range].to_vec();
+                let offsets = offsets[range.start..(range.end + 1)].to_vec();
                 Column::Array {
                     array: array.clone(),
                     offsets,
@@ -366,10 +374,14 @@ impl ColumnBuilder {
                 column: Box::new(Self::with_capacity(ty, capacity)),
                 validity: MutableBitmap::with_capacity(capacity),
             },
-            DataType::Array(ty) => ColumnBuilder::Array {
-                array: Box::new(Self::with_capacity(ty, 0)),
-                offsets: Vec::with_capacity(capacity),
-            },
+            DataType::Array(ty) => {
+                let mut offsets = Vec::with_capacity(capacity + 1);
+                offsets.push(0);
+                ColumnBuilder::Array {
+                    array: Box::new(Self::with_capacity(ty, 0)),
+                    offsets,
+                }
+            }
             DataType::Tuple(fields) => ColumnBuilder::Tuple {
                 fields: fields
                     .iter()
@@ -392,10 +404,9 @@ impl ColumnBuilder {
             (ColumnBuilder::Boolean(col), ScalarRef::Boolean(value)) => col.push(value),
             (ColumnBuilder::String(col), ScalarRef::String(value)) => col.push(value.to_string()),
             (ColumnBuilder::Array { array, offsets }, ScalarRef::Array(value)) => {
-                let start = array.len();
-                let end = start + value.len();
-                offsets.push(start..end);
                 array.append(&ColumnBuilder::from_column(value));
+                let len = array.len();
+                offsets.push(len);
             }
             (ColumnBuilder::Nullable { column, validity }, ScalarRef::Null) => {
                 column.push_default();
@@ -427,8 +438,8 @@ impl ColumnBuilder {
             ColumnBuilder::Boolean(col) => col.push(false),
             ColumnBuilder::String(col) => col.push(String::new()),
             ColumnBuilder::Array { array, offsets } => {
-                let start = array.len();
-                offsets.push(start..start);
+                let len = array.len();
+                offsets.push(len);
             }
             ColumnBuilder::Nullable { column, validity } => {
                 column.push_default();
@@ -477,12 +488,8 @@ impl ColumnBuilder {
                 },
             ) => {
                 array.append(other_array);
-                let base = offsets.last().map(|range| range.end).unwrap_or(0);
-                offsets.extend(
-                    other_offsets
-                        .iter()
-                        .map(|range| (range.start + base)..(range.end + base)),
-                );
+                let start = offsets.last().cloned().unwrap();
+                offsets.extend(other_offsets.iter().skip(1).map(|offset| start + offset));
             }
             (
                 ColumnBuilder::Nullable { column, validity },

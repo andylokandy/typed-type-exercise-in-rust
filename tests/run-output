@@ -68,13 +68,13 @@ ast: create_array(a::Int16{not_null}, b::Int16{not_null})
 expr: create_array<T0=Int16><T0, T0>(a{not_null}, b{not_null})
 type: Array<Int16>
 property: {not_null}
-result: Array { array: Int16([0, 5, 1, 6, 2, 7, 3, 8, 4, 9]), offsets: [0..2, 2..4, 4..6, 6..8, 8..10] }
+result: Array { array: Int16([0, 5, 1, 6, 2, 7, 3, 8, 4, 9]), offsets: [0, 2, 4, 6, 8, 10] }
 
 ast: create_array(create_array(a::Int16{not_null}, b::Int16{not_null}), NULL, NULL)
 expr: create_array<T0=Nullable<Array<Int16>>><T0, T0, T0>(cast<dest_type=Nullable<Array<Int16>>>(create_array<T0=Int16><T0, T0>(a{not_null}, b{not_null})){not_null}, cast<dest_type=Nullable<Array<Int16>>>(NULL){}, cast<dest_type=Nullable<Array<Int16>>>(NULL){})
 type: Array<Nullable<Array<Int16>>>
 property: {not_null}
-result: Array { array: Nullable { column: Array { array: Int16([0, 5, 1, 6, 2, 7, 3, 8, 4, 9]), offsets: [0..2, 2..2, 2..2, 2..4, 4..4, 4..4, 4..6, 6..6, 6..6, 6..8, 8..8, 8..8, 8..10, 10..10, 10..10] }, validity: [0b01001001, 0b_0010010] }, offsets: [0..3, 3..6, 6..9, 9..12, 12..15] }
+result: Array { array: Nullable { column: Array { array: Int16([0, 5, 1, 6, 2, 7, 3, 8, 4, 9]), offsets: [0, 2, 2, 2, 4, 4, 4, 6, 6, 6, 8, 8, 8, 10, 10, 10] }, validity: [0b01001001, 0b_0010010] }, offsets: [0, 3, 6, 9, 12, 15] }
 
 ast: get(array::Array<Int16>{not_null}, idx::UInt8{not_null})
 expr: get<T0=Int16><Array<T0>, Int16>(array{not_null}, cast<dest_type=Int16>(idx){not_null})
@@ -86,5 +86,5 @@ ast: get(array::Array<Array<Int16>>{not_null}, idx::UInt8{not_null})
 expr: get<T0=Array<Int16>><Array<T0>, Int16>(array{not_null}, cast<dest_type=Int16>(idx){not_null})
 type: Array<Int16>
 property: {not_null}
-result: Array { array: Int16([0, 1, 2, 3, 4, 25, 26, 27, 28, 29, 50, 51, 52, 53, 54]), offsets: [0..5, 5..10, 10..15] }
+result: Array { array: Int16([0, 1, 2, 3, 4, 25, 26, 27, 28, 29, 50, 51, 52, 53, 54]), offsets: [0, 5, 10, 15] }
 
