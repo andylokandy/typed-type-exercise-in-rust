@@ -1,5 +1,7 @@
 use std::{marker::PhantomData, ops::Range};
 
+use arrow2::trusted_len::TrustedLen;
+
 use crate::values::{Column, Scalar};
 
 use super::{ArgType, DataType, GenericMap, ValueType};
@@ -136,4 +138,10 @@ impl<'a, T: ArgType> Iterator for ArrayIterator<'a, T> {
             .next()
             .map(|range| T::slice_column(self.col, range.clone()))
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.offsets.size_hint()
+    }
 }
+
+unsafe impl<'a, T: ArgType> TrustedLen for ArrayIterator<'a, T> {}
