@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 use std::io::Write;
+use std::iter::once;
 use std::sync::Arc;
 
 use crate::expr::{Literal, AST};
@@ -380,7 +381,7 @@ fn run_cases(output: &mut impl Write) {
                 "array".to_string(),
                 Column::Array {
                     array: Box::new(Column::Int16((0..100).collect())),
-                    offsets: vec![0..20, 20..40, 40..60, 60..80, 80..100],
+                    offsets: vec![0, 20, 40, 60, 80, 100],
                 },
             ),
             ("idx".to_string(), Column::UInt8(vec![0, 1, 2, 3, 4].into())),
@@ -416,29 +417,11 @@ fn run_cases(output: &mut impl Write) {
                     array: Box::new(Column::Array {
                         array: Box::new(Column::Int16((0..100).collect())),
                         offsets: vec![
-                            0..5,
-                            5..10,
-                            10..15,
-                            15..20,
-                            20..25,
-                            25..30,
-                            30..35,
-                            35..40,
-                            40..45,
-                            45..50,
-                            50..55,
-                            55..60,
-                            60..65,
-                            65..70,
-                            70..75,
-                            75..80,
-                            80..85,
-                            85..90,
-                            90..95,
-                            95..100,
+                            0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85,
+                            90, 100,
                         ],
                     }),
-                    offsets: vec![0..4, 4..8, 8..12, 12..16, 16..20],
+                    offsets: vec![0, 4, 8, 12, 16, 20],
                 },
             ),
             ("idx".to_string(), Column::UInt8(vec![0, 1, 2].into())),
@@ -536,8 +519,8 @@ fn builtin_functions() -> FunctionRegistry {
                             }
                         }
                     }
-                    let offsets = (0..len)
-                        .map(|row| (args.len() * row)..(args.len() * (row + 1)))
+                    let offsets = once(0)
+                        .chain((0..len).map(|row| args.len() * (row + 1)))
                         .collect();
                     Value::Column(Column::Array {
                         array: Box::new(array_builder.build()),

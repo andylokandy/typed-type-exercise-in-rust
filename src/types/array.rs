@@ -11,7 +11,7 @@ pub struct ArrayType<T: ArgType>(PhantomData<T>);
 impl<T: ArgType> ValueType for ArrayType<T> {
     type Scalar = T::Column;
     type ScalarRef<'a> = T::Column;
-    type Column = (T::Column, Vec<Range<usize>>);
+    type Column = (T::Column, Vec<usize>);
 
     fn to_owned_scalar<'a>(scalar: Self::ScalarRef<'a>) -> Self::Scalar {
         scalar
@@ -24,7 +24,7 @@ impl<T: ArgType> ValueType for ArrayType<T> {
 
 impl<T: ArgType> ArgType for ArrayType<T> {
     type ColumnIterator<'a> = ArrayIterator<'a, T>;
-    type ColumnBuilder = (T::ColumnBuilder, Vec<Range<usize>>);
+    type ColumnBuilder = (T::ColumnBuilder, Vec<usize>);
 
     fn data_type() -> DataType {
         DataType::Array(Box::new(T::data_type()))
@@ -62,7 +62,7 @@ impl<T: ArgType> ArgType for ArrayType<T> {
     }
 
     fn index_column<'a>((col, offsets): &'a Self::Column, index: usize) -> Self::ScalarRef<'a> {
-        T::slice_column(col, offsets[index].clone())
+        T::slice_column(col, offsets[index]..offsets[index + 1])
     }
 
     fn slice_column<'a>((col, offsets): &'a Self::Column, range: Range<usize>) -> Self::Column {
@@ -72,12 +72,12 @@ impl<T: ArgType> ArgType for ArrayType<T> {
     fn iter_column<'a>((col, offsets): &'a Self::Column) -> Self::ColumnIterator<'a> {
         ArrayIterator {
             col,
-            offsets: offsets.iter(),
+            offsets: offsets.windows(2),
         }
     }
 
     fn create_builder(_capacity: usize, generics: &GenericMap) -> Self::ColumnBuilder {
-        (T::create_builder(0, generics), Vec::with_capacity(0))
+        (T::create_builder(0, generics), vec![0])
     }
 
     fn column_to_builder((col, offsets): Self::Column) -> Self::ColumnBuilder {
@@ -85,32 +85,27 @@ impl<T: ArgType> ArgType for ArrayType<T> {
     }
 
     fn builder_len((_, offsets): &Self::ColumnBuilder) -> usize {
-        offsets.len()
+        offsets.len() - 1
     }
 
     fn push_item((builder, offsets): &mut Self::ColumnBuilder, item: Self::ScalarRef<'_>) {
-        let begin = T::builder_len(builder);
-        let end = begin + T::column_len(&item);
-        offsets.push(begin..end);
         let other_col = T::column_to_builder(item);
         T::append_builder(builder, &other_col);
+        let len = T::builder_len(builder);
+        offsets.push(len);
     }
 
     fn push_default((builder, offsets): &mut Self::ColumnBuilder) {
-        let begin = T::builder_len(builder);
-        offsets.push(begin..begin);
+        let len = T::builder_len(builder);
+        offsets.push(len);
     }
 
     fn append_builder(
         (builder, offsets): &mut Self::ColumnBuilder,
         (other_builder, other_offsets): &Self::ColumnBuilder,
     ) {
-        let end = offsets.iter().map(|range| range.end).max().unwrap_or(0);
-        offsets.extend(
-            other_offsets
-                .iter()
-                .map(|range| range.start + end..range.end + end),
-        );
+        let end = offsets.last().cloned().unwrap();
+        offsets.extend(other_offsets.iter().skip(1).map(|offset| offset + end));
         T::append_builder(builder, other_builder);
     }
 
@@ -120,14 +115,14 @@ impl<T: ArgType> ArgType for ArrayType<T> {
     }
 
     fn build_scalar((builder, offsets): Self::ColumnBuilder) -> Self::Scalar {
-        assert_eq!(offsets.len(), 1);
-        T::slice_column(&T::build_column(builder), offsets[0].clone())
+        assert_eq!(offsets.len(), 2);
+        T::slice_column(&T::build_column(builder), offsets[0]..offsets[1])
     }
 }
 
 pub struct ArrayIterator<'a, T: ArgType> {
     col: &'a T::Column,
-    offsets: std::slice::Iter<'a, Range<usize>>,
+    offsets: std::slice::Windows<'a, usize>,
 }
 
 impl<'a, T: ArgType> Iterator for ArrayIterator<'a, T> {
@@ -136,7 +131,7 @@ impl<'a, T: ArgType> Iterator for ArrayIterator<'a, T> {
     fn next(&mut self) -> Option<Self::Item> {
         self.offsets
             .next()
-            .map(|range| T::slice_column(self.col, range.clone()))
+            .map(|range| T::slice_column(self.col, range[0]..range[1]))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {

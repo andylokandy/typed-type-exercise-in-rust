@@ -89,7 +89,7 @@ impl Runtime {
                 (Column::EmptyArray { len }, DataType::Array(dest_ty)) => {
                     Some(Value::Column(Column::Array {
                         array: Box::new(ColumnBuilder::with_capacity(dest_ty, 0).build()),
-                        offsets: vec![0..0; len],
+                        offsets: vec![0; len + 1],
                     }))
                 }
                 (Column::Nullable { column, validity }, DataType::Nullable(dest_ty)) => {
