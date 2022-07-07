@@ -223,13 +223,10 @@ fn run_cases(output: &mut impl Write) {
             (
                 "b".to_string(),
                 Column::Nullable {
-                    column: Box::new(Column::String(vec![
-                        "a".to_string(),
-                        "b".to_string(),
-                        "c".to_string(),
-                        "d".to_string(),
-                        "e".to_string(),
-                    ])),
+                    column: Box::new(Column::String {
+                        data: "abcde".as_bytes().to_vec().into(),
+                        offsets: vec![0, 1, 2, 3, 4, 5],
+                    }),
                     validity: vec![true, true, false, false, false].into(),
                 },
             ),
@@ -258,13 +255,10 @@ fn run_cases(output: &mut impl Write) {
                 column: Box::new(Column::Tuple {
                     fields: vec![
                         Column::Boolean(vec![false; 5].into()),
-                        Column::String(vec![
-                            "a".to_string(),
-                            "b".to_string(),
-                            "c".to_string(),
-                            "d".to_string(),
-                            "e".to_string(),
-                        ]),
+                        Column::String {
+                            data: "abcde".as_bytes().to_vec().into(),
+                            offsets: vec![0, 1, 2, 3, 4, 5],
+                        },
                     ],
                     len: 5,
                 }),

@@ -44,13 +44,13 @@ ast: get_tuple(1)(create_tuple(a::Int16{not_null}, b::Nullable<String>{}))
 expr: get_tuple<(Int16, Nullable<String>)>(create_tuple<Int16, Nullable<String>>(a{not_null}, b{}){not_null})
 type: Nullable<String>
 property: {not_null}
-result: Nullable { column: String(["a", "b", "c", "d", "e"]), validity: [0b___00011] }
+result: Nullable { column: String { data: [97, 98, 99, 100, 101], offsets: [0, 1, 2, 3, 4, 5] }, validity: [0b___00011] }
 
 ast: get_tuple(1)(a::Nullable<(Boolean, String)>{not_null})
 expr: get_tuple<Nullable<(Boolean, String)>>(a{not_null})
 type: Nullable<String>
 property: {not_null}
-result: Nullable { column: String(["a", "b", "c", "d", "e"]), validity: [0b___00011] }
+result: Nullable { column: String { data: [97, 98, 99, 100, 101], offsets: [0, 1, 2, 3, 4, 5] }, validity: [0b___00011] }
 
 ast: create_array()
 expr: create_array<>()

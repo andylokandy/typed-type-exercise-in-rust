@@ -47,5 +47,5 @@ pub enum Literal {
     UInt8(u8),
     UInt16(u16),
     Boolean(bool),
-    String(String),
+    String(Vec<u8>),
 }
