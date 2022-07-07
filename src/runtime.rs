@@ -135,7 +135,7 @@ impl Runtime {
                     column.iter().map(|v| *v as i16).collect(),
                 ))),
                 (col @ Column::Boolean(_), DataType::Boolean)
-                | (col @ Column::String(_), DataType::String)
+                | (col @ Column::String { .. }, DataType::String)
                 | (col @ Column::UInt8(_), DataType::UInt8)
                 | (col @ Column::Int8(_), DataType::Int8)
                 | (col @ Column::Int16(_), DataType::Int16)

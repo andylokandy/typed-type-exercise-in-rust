@@ -50,7 +50,7 @@ impl Display for Literal {
             Literal::UInt16(val) => write!(f, "{val}::UInt16"),
             Literal::Int8(val) => write!(f, "{val}::Int8"),
             Literal::Int16(val) => write!(f, "{val}::Int16"),
-            Literal::String(val) => write!(f, "{val}::String"),
+            Literal::String(val) => write!(f, "{}::String", String::from_utf8_lossy(val)),
         }
     }
 }
