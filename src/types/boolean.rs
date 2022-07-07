@@ -1,35 +1,34 @@
 use std::ops::Range;
 
-use crate::values::{Column, Scalar};
+use arrow2::bitmap::{Bitmap, MutableBitmap};
 
-use super::{ArgType, ColumnBuilder, ColumnViewer, DataType, GenericMap, ValueType};
+use crate::{
+    util::bitmap_into_mut,
+    values::{Column, Scalar},
+};
+
+use super::{ArgType, DataType, GenericMap, ValueType};
 
 pub struct BooleanType;
 
 impl ValueType for BooleanType {
     type Scalar = bool;
     type ScalarRef<'a> = bool;
-    type Column = Vec<bool>;
-    type ColumnRef<'a> = &'a [bool];
+    type Column = Bitmap;
 
     fn to_owned_scalar<'a>(scalar: Self::ScalarRef<'a>) -> Self::Scalar {
         scalar
     }
 
-    fn to_owned_column<'a>(col: Self::ColumnRef<'a>) -> Self::Column {
-        col.to_vec()
-    }
-
     fn to_scalar_ref<'a>(scalar: &'a Self::Scalar) -> Self::ScalarRef<'a> {
         *scalar
-    }
-
-    fn to_column_ref<'a>(col: &'a Self::Column) -> Self::ColumnRef<'a> {
-        col
     }
 }
 
 impl ArgType for BooleanType {
+    type ColumnIterator<'a> = arrow2::bitmap::utils::BitmapIter<'a>;
+    type ColumnBuilder = MutableBitmap;
+
     fn data_type() -> DataType {
         DataType::Boolean
     }
@@ -41,9 +40,9 @@ impl ArgType for BooleanType {
         }
     }
 
-    fn try_downcast_column<'a>(col: &'a Column) -> Option<Self::ColumnRef<'a>> {
+    fn try_downcast_column<'a>(col: &'a Column) -> Option<Self::Column> {
         match col {
-            Column::Boolean(column) => Some(column),
+            Column::Boolean(column) => Some(column.clone()),
             _ => None,
         }
     }
@@ -55,44 +54,61 @@ impl ArgType for BooleanType {
     fn upcast_column(col: Self::Column) -> Column {
         Column::Boolean(col)
     }
-}
 
-impl ColumnViewer for BooleanType {
-    type ColumnIterator<'a> = std::iter::Cloned<std::slice::Iter<'a, bool>>;
-
-    fn column_len<'a>(col: Self::ColumnRef<'a>) -> usize {
+    fn column_len<'a>(col: &'a Self::Column) -> usize {
         col.len()
     }
 
-    fn index_column<'a>(col: Self::ColumnRef<'a>, index: usize) -> Self::ScalarRef<'a> {
-        col[index]
+    fn index_column<'a>(col: &'a Self::Column, index: usize) -> Self::ScalarRef<'a> {
+        col.get(index).unwrap()
     }
 
-    fn slice_column<'a>(col: Self::ColumnRef<'a>, range: Range<usize>) -> Self::ColumnRef<'a> {
-        &col[range]
+    fn slice_column<'a>(col: &'a Self::Column, range: Range<usize>) -> Self::Column {
+        col.clone().slice(range.start, range.end - range.start)
     }
 
-    fn iter_column<'a>(col: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a> {
-        col.iter().cloned()
-    }
-}
-
-impl ColumnBuilder for BooleanType {
-    fn create_column(capacity: usize, _: &GenericMap) -> Self::Column {
-        Vec::with_capacity(capacity)
-    }
-
-    fn push_column(mut col: Self::Column, item: Self::Scalar) -> Self::Column {
-        col.push(item);
-        col
-    }
-
-    fn append_column(mut col: Self::Column, mut other: Self::Column) -> Self::Column {
-        col.append(&mut other);
-        col
+    fn iter_column<'a>(col: &'a Self::Column) -> Self::ColumnIterator<'a> {
+        col.iter()
     }
 
     fn column_from_iter(iter: impl Iterator<Item = Self::Scalar>, _: &GenericMap) -> Self::Column {
         iter.collect()
+    }
+
+    fn create_builder(capacity: usize, _: &GenericMap) -> Self::ColumnBuilder {
+        MutableBitmap::with_capacity(capacity)
+    }
+
+    fn column_to_builder(col: Self::Column) -> Self::ColumnBuilder {
+        bitmap_into_mut(col)
+    }
+
+    fn builder_len(builder: &Self::ColumnBuilder) -> usize {
+        builder.len()
+    }
+
+    fn push_item(
+        mut builder: Self::ColumnBuilder,
+        item: Self::ScalarRef<'_>,
+    ) -> Self::ColumnBuilder {
+        builder.push(item);
+        builder
+    }
+
+    fn push_default(mut builder: Self::ColumnBuilder) -> Self::ColumnBuilder {
+        builder.push(false);
+        builder
+    }
+
+    fn append_builder(
+        mut builder: Self::ColumnBuilder,
+        other_builder: Self::ColumnBuilder,
+    ) -> Self::ColumnBuilder {
+        builder.extend_from_slice(other_builder.as_slice(), 0, other_builder.len());
+        builder
+    }
+
+    fn build_column(builder: Self::ColumnBuilder) -> Self::Column {
+        builder.into()
     }
 }

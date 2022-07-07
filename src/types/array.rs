@@ -2,34 +2,28 @@ use std::{marker::PhantomData, ops::Range};
 
 use crate::values::{Column, Scalar};
 
-use super::{ArgType, ColumnBuilder, ColumnViewer, DataType, GenericMap, ValueType};
+use super::{ArgType, DataType, GenericMap, ValueType};
 
 pub struct ArrayType<T: ArgType>(PhantomData<T>);
 
 impl<T: ArgType> ValueType for ArrayType<T> {
     type Scalar = T::Column;
-    type ScalarRef<'a> = T::ColumnRef<'a>;
+    type ScalarRef<'a> = T::Column;
     type Column = (T::Column, Vec<Range<usize>>);
-    type ColumnRef<'a> = (T::ColumnRef<'a>, &'a [Range<usize>]);
 
     fn to_owned_scalar<'a>(scalar: Self::ScalarRef<'a>) -> Self::Scalar {
-        T::to_owned_column(scalar)
-    }
-
-    fn to_owned_column<'a>((col, offsets): Self::ColumnRef<'a>) -> Self::Column {
-        (T::to_owned_column(col), offsets.to_vec())
+        scalar
     }
 
     fn to_scalar_ref<'a>(scalar: &'a Self::Scalar) -> Self::ScalarRef<'a> {
-        T::to_column_ref(scalar)
-    }
-
-    fn to_column_ref<'a>((col, offsets): &'a Self::Column) -> Self::ColumnRef<'a> {
-        (T::to_column_ref(col), offsets)
+        scalar.clone()
     }
 }
 
 impl<T: ArgType> ArgType for ArrayType<T> {
+    type ColumnIterator<'a> = ArrayIterator<'a, T>;
+    type ColumnBuilder = (T::ColumnBuilder, Vec<Range<usize>>);
+
     fn data_type() -> DataType {
         DataType::Array(Box::new(T::data_type()))
     }
@@ -41,9 +35,11 @@ impl<T: ArgType> ArgType for ArrayType<T> {
         }
     }
 
-    fn try_downcast_column<'a>(col: &'a Column) -> Option<Self::ColumnRef<'a>> {
+    fn try_downcast_column<'a>(col: &'a Column) -> Option<Self::Column> {
         match col {
-            Column::Array { array, offsets } => Some((T::try_downcast_column(array)?, offsets)),
+            Column::Array { array, offsets } => {
+                Some((T::try_downcast_column(array)?, offsets.clone()))
+            }
             _ => None,
         }
     }
@@ -58,76 +54,86 @@ impl<T: ArgType> ArgType for ArrayType<T> {
             offsets,
         }
     }
-}
 
-impl<T: ArgType + ColumnViewer> ColumnViewer for ArrayType<T> {
-    type ColumnIterator<'a> = ArrayIterator<'a, T>;
-
-    fn column_len<'a>((_, offsets): Self::ColumnRef<'a>) -> usize {
+    fn column_len<'a>((_, offsets): &'a Self::Column) -> usize {
         offsets.len()
     }
 
-    fn index_column<'a>((col, offsets): Self::ColumnRef<'a>, index: usize) -> Self::ScalarRef<'a> {
+    fn index_column<'a>((col, offsets): &'a Self::Column, index: usize) -> Self::ScalarRef<'a> {
         T::slice_column(col, offsets[index].clone())
     }
 
-    fn slice_column<'a>(
-        (col, offsets): Self::ColumnRef<'a>,
-        range: Range<usize>,
-    ) -> Self::ColumnRef<'a> {
-        (col, &offsets[range])
+    fn slice_column<'a>((col, offsets): &'a Self::Column, range: Range<usize>) -> Self::Column {
+        (col.clone(), offsets[range].to_vec())
     }
 
-    fn iter_column<'a>((col, offsets): Self::ColumnRef<'a>) -> Self::ColumnIterator<'a> {
+    fn iter_column<'a>((col, offsets): &'a Self::Column) -> Self::ColumnIterator<'a> {
         ArrayIterator {
             col,
             offsets: offsets.iter(),
         }
     }
-}
 
-pub struct ArrayIterator<'a, T: ColumnViewer> {
-    col: T::ColumnRef<'a>,
-    offsets: std::slice::Iter<'a, Range<usize>>,
-}
-
-impl<'a, T: ColumnViewer> Iterator for ArrayIterator<'a, T> {
-    type Item = T::ColumnRef<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.offsets
-            .next()
-            .map(|range| T::slice_column(self.col.clone(), range.clone()))
-    }
-}
-
-impl<T: ArgType + ColumnViewer + ColumnBuilder> ColumnBuilder for ArrayType<T> {
-    fn create_column(capacity: usize, generics: &GenericMap) -> Self::Column {
-        (
-            T::create_column(capacity, generics),
-            Vec::with_capacity(capacity),
-        )
+    fn create_builder(_capacity: usize, generics: &GenericMap) -> Self::ColumnBuilder {
+        (T::create_builder(0, generics), Vec::with_capacity(0))
     }
 
-    fn push_column((col, mut offsets): Self::Column, item: Self::Scalar) -> Self::Column {
-        let begin = T::column_len(T::to_column_ref(&col));
-        let end = begin + T::column_len(T::to_column_ref(&item));
+    fn column_to_builder((col, offsets): Self::Column) -> Self::ColumnBuilder {
+        (T::column_to_builder(col), offsets)
+    }
+
+    fn builder_len((_, offsets): &Self::ColumnBuilder) -> usize {
+        offsets.len()
+    }
+
+    fn push_item(
+        (builder, mut offsets): Self::ColumnBuilder,
+        item: Self::ScalarRef<'_>,
+    ) -> Self::ColumnBuilder {
+        let begin = T::builder_len(&builder);
+        let end = begin + T::column_len(&item);
         offsets.push(begin..end);
-        let col = T::append_column(col, item);
-        (col, offsets)
+        let other_col = T::column_to_builder(item);
+        let builder = T::append_builder(builder, other_col);
+        (builder, offsets)
     }
 
-    fn append_column(
-        (col, mut offsets): Self::Column,
-        (other_col, other_offsets): Self::Column,
-    ) -> Self::Column {
+    fn push_default((builder, mut offsets): Self::ColumnBuilder) -> Self::ColumnBuilder {
+        let begin = T::builder_len(&builder);
+        offsets.push(begin..begin);
+        (builder, offsets)
+    }
+
+    fn append_builder(
+        (builder, mut offsets): Self::ColumnBuilder,
+        (other_builder, other_offsets): Self::ColumnBuilder,
+    ) -> Self::ColumnBuilder {
         let end = offsets.iter().map(|range| range.end).max().unwrap_or(0);
         offsets.extend(
             other_offsets
                 .iter()
                 .map(|range| range.start + end..range.end + end),
         );
-        let col = T::append_column(col, other_col);
-        (col, offsets)
+        let builder = T::append_builder(builder, other_builder);
+        (builder, offsets)
+    }
+
+    fn build_column((builder, offsets): Self::ColumnBuilder) -> Self::Column {
+        (T::build_column(builder), offsets)
+    }
+}
+
+pub struct ArrayIterator<'a, T: ArgType> {
+    col: &'a T::Column,
+    offsets: std::slice::Iter<'a, Range<usize>>,
+}
+
+impl<'a, T: ArgType> Iterator for ArrayIterator<'a, T> {
+    type Item = T::Column;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.offsets
+            .next()
+            .map(|range| T::slice_column(self.col, range.clone()))
     }
 }

@@ -9,16 +9,15 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::sync::Arc;
 
-use property::{FunctionProperty, ValueProperty};
-
 use crate::expr::{Literal, AST};
 use crate::function::FunctionRegistry;
 use crate::function::{vectorize_2_arg, Function, FunctionSignature};
+use crate::property::{FunctionProperty, ValueProperty};
 use crate::runtime::Runtime;
 use crate::types::DataType;
 use crate::types::*;
 use crate::types::{ArgType, ArrayType, Int16Type};
-use crate::values::{Column, ValueRef};
+use crate::values::{Column, ColumnBuilder, ValueRef};
 use crate::values::{Scalar, Value};
 
 pub mod display;
@@ -28,6 +27,7 @@ pub mod property;
 pub mod runtime;
 pub mod type_check;
 pub mod types;
+pub mod util;
 pub mod values;
 
 pub fn main() {
@@ -99,8 +99,8 @@ fn run_cases(output: &mut impl Write) {
         [(
             "a".to_string(),
             Column::Nullable {
-                column: Box::new(Column::UInt8(vec![10, 11, 12])),
-                nulls: vec![false, true, false],
+                column: Box::new(Column::UInt8(vec![10, 11, 12].into())),
+                validity: vec![false, true, false].into(),
             },
         )]
         .into_iter()
@@ -129,15 +129,15 @@ fn run_cases(output: &mut impl Write) {
             (
                 "a".to_string(),
                 Column::Nullable {
-                    column: Box::new(Column::UInt8(vec![10, 11, 12])),
-                    nulls: vec![false, true, false],
+                    column: Box::new(Column::UInt8(vec![10, 11, 12].into())),
+                    validity: vec![false, true, false].into(),
                 },
             ),
             (
                 "b".to_string(),
                 Column::Nullable {
-                    column: Box::new(Column::UInt8(vec![1, 2, 3])),
-                    nulls: vec![false, true, true],
+                    column: Box::new(Column::UInt8(vec![1, 2, 3].into())),
+                    validity: vec![false, true, true].into(),
                 },
             ),
         ]
@@ -159,8 +159,8 @@ fn run_cases(output: &mut impl Write) {
         [(
             "a".to_string(),
             Column::Nullable {
-                column: Box::new(Column::Boolean(vec![true, false, true])),
-                nulls: vec![false, true, false],
+                column: Box::new(Column::Boolean(vec![true, false, true].into())),
+                validity: vec![false, true, false].into(),
             },
         )]
         .into_iter()
@@ -218,7 +218,7 @@ fn run_cases(output: &mut impl Write) {
             params: vec![1],
         },
         [
-            ("a".to_string(), Column::Int16(vec![0, 1, 2, 3, 4])),
+            ("a".to_string(), Column::Int16(vec![0, 1, 2, 3, 4].into())),
             (
                 "b".to_string(),
                 Column::Nullable {
@@ -229,7 +229,7 @@ fn run_cases(output: &mut impl Write) {
                         "d".to_string(),
                         "e".to_string(),
                     ])),
-                    nulls: vec![true, true, false, false, false],
+                    validity: vec![true, true, false, false, false].into(),
                 },
             ),
         ]
@@ -256,7 +256,7 @@ fn run_cases(output: &mut impl Write) {
             Column::Nullable {
                 column: Box::new(Column::Tuple {
                     fields: vec![
-                        Column::Boolean(vec![false; 5]),
+                        Column::Boolean(vec![false; 5].into()),
                         Column::String(vec![
                             "a".to_string(),
                             "b".to_string(),
@@ -267,7 +267,7 @@ fn run_cases(output: &mut impl Write) {
                     ],
                     len: 5,
                 }),
-                nulls: vec![true, true, false, false, false],
+                validity: vec![true, true, false, false, false].into(),
             },
         )]
         .into_iter()
@@ -316,8 +316,8 @@ fn run_cases(output: &mut impl Write) {
             params: vec![],
         },
         [
-            ("a".to_string(), Column::Int16(vec![0, 1, 2, 3, 4])),
-            ("b".to_string(), Column::Int16(vec![5, 6, 7, 8, 9])),
+            ("a".to_string(), Column::Int16(vec![0, 1, 2, 3, 4].into())),
+            ("b".to_string(), Column::Int16(vec![5, 6, 7, 8, 9].into())),
         ]
         .into_iter()
         .collect(),
@@ -350,8 +350,8 @@ fn run_cases(output: &mut impl Write) {
             params: vec![],
         },
         [
-            ("a".to_string(), Column::Int16(vec![0, 1, 2, 3, 4])),
-            ("b".to_string(), Column::Int16(vec![5, 6, 7, 8, 9])),
+            ("a".to_string(), Column::Int16(vec![0, 1, 2, 3, 4].into())),
+            ("b".to_string(), Column::Int16(vec![5, 6, 7, 8, 9].into())),
         ]
         .into_iter()
         .collect(),
@@ -383,7 +383,7 @@ fn run_cases(output: &mut impl Write) {
                     offsets: vec![0..20, 20..40, 40..60, 60..80, 80..100],
                 },
             ),
-            ("idx".to_string(), Column::UInt8(vec![0, 1, 2, 3, 4])),
+            ("idx".to_string(), Column::UInt8(vec![0, 1, 2, 3, 4].into())),
         ]
         .into_iter()
         .collect(),
@@ -441,7 +441,7 @@ fn run_cases(output: &mut impl Write) {
                     offsets: vec![0..4, 4..8, 8..12, 12..16, 16..20],
                 },
             ),
-            ("idx".to_string(), Column::UInt8(vec![0, 1, 2])),
+            ("idx".to_string(), Column::UInt8(vec![0, 1, 2].into())),
         ]
         .into_iter()
         .collect(),
@@ -523,15 +523,15 @@ fn builtin_functions() -> FunctionRegistry {
                     _ => None,
                 });
                 if let Some(len) = len {
-                    let mut array = Column::create_and_fill_default(&generics[0], 0);
+                    let mut array_builder = ColumnBuilder::with_capacity(&generics[0], 0);
                     for idx in 0..len {
                         for arg in args {
                             match arg {
                                 ValueRef::Scalar(scalar) => {
-                                    array.push((*scalar).clone());
+                                    array_builder.push(scalar.as_ref());
                                 }
                                 ValueRef::Column(col) => {
-                                    array.push(col.slice_all().index(idx).to_owned());
+                                    array_builder.push(col.index(idx));
                                 }
                             }
                         }
@@ -540,21 +540,21 @@ fn builtin_functions() -> FunctionRegistry {
                         .map(|row| (args.len() * row)..(args.len() * (row + 1)))
                         .collect();
                     Value::Column(Column::Array {
-                        array: Box::new(array),
+                        array: Box::new(array_builder.build()),
                         offsets,
                     })
                 } else {
                     // All args are scalars, so we return a scalar as result
-                    let mut array = Column::create_and_fill_default(&generics[0], 0);
+                    let mut array = ColumnBuilder::with_capacity(&generics[0], 0);
                     for arg in args {
                         match arg {
                             ValueRef::Scalar(scalar) => {
-                                array.push((*scalar).clone());
+                                array.push(scalar.as_ref());
                             }
                             ValueRef::Column(_) => unreachable!(),
                         }
                     }
-                    Value::Scalar(Scalar::Array(array))
+                    Value::Scalar(Scalar::Array(array.build()))
                 }
             }),
         }))
@@ -583,8 +583,8 @@ fn builtin_functions() -> FunctionRegistry {
                     let fields = args
                         .iter()
                         .map(|arg| match arg {
-                            ValueRef::Scalar(scalar) => scalar.as_ref().repeat(len),
-                            ValueRef::Column(col) => (*col).to_owned(),
+                            ValueRef::Scalar(scalar) => scalar.as_ref().repeat(len).build(),
+                            ValueRef::Column(col) => col.clone(),
                         })
                         .collect();
                     Value::Column(Column::Tuple { fields, len })
@@ -654,10 +654,10 @@ fn builtin_functions() -> FunctionRegistry {
                 ValueRef::Scalar(Scalar::Tuple(fields)) => Value::Scalar(fields[idx].to_owned()),
                 ValueRef::Column(Column::Nullable {
                     column: box Column::Tuple { fields, .. },
-                    nulls,
+                    validity,
                 }) => Value::Column(Column::Nullable {
                     column: Box::new(fields[idx].to_owned()),
-                    nulls: nulls.clone(),
+                    validity: validity.clone(),
                 }),
                 _ => unreachable!(),
             }),
