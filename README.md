@@ -46,7 +46,7 @@ cargo run
 - [x] Automatcially generate the Null function.
 - [ ] Automatcially dispatch arithmetic types.
 - [x] Implement arrays.
-- [ ] Implement column builder.
+- [x] Implement column builder.
 - [x] Implement unlimited-length tuples.
 - [x] Implment generic functions.
 - [x] Implment functions properties.

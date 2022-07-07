@@ -1,8 +1,15 @@
 use std::ops::Range;
 
+use arrow2::{
+    bitmap::{Bitmap, MutableBitmap},
+    buffer::Buffer,
+};
 use enum_as_inner::EnumAsInner;
 
-use crate::types::*;
+use crate::{
+    types::*,
+    util::{append_bitmap, bitmap_into_mut, constant_bitmap},
+};
 
 #[derive(EnumAsInner)]
 pub enum Value<T: ValueType> {
@@ -13,10 +20,10 @@ pub enum Value<T: ValueType> {
 #[derive(EnumAsInner)]
 pub enum ValueRef<'a, T: ValueType> {
     Scalar(T::ScalarRef<'a>),
-    Column(T::ColumnRef<'a>),
+    Column(T::Column),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, EnumAsInner)]
+#[derive(Debug, Clone, Default, EnumAsInner)]
 pub enum Scalar {
     #[default]
     Null,
@@ -31,7 +38,7 @@ pub enum Scalar {
     Tuple(Vec<Scalar>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, EnumAsInner)]
+#[derive(Debug, Clone, Default, EnumAsInner)]
 pub enum ScalarRef<'a> {
     #[default]
     Null,
@@ -42,12 +49,40 @@ pub enum ScalarRef<'a> {
     UInt16(u16),
     Boolean(bool),
     String(&'a str),
-    Array(ColumnRef<'a>),
+    Array(Column),
     Tuple(Vec<ScalarRef<'a>>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, EnumAsInner)]
+#[derive(Debug, Clone, EnumAsInner)]
 pub enum Column {
+    Null {
+        len: usize,
+    },
+    EmptyArray {
+        len: usize,
+    },
+    Int8(Buffer<i8>),
+    Int16(Buffer<i16>),
+    UInt8(Buffer<u8>),
+    UInt16(Buffer<u16>),
+    Boolean(Bitmap),
+    String(Vec<String>),
+    Array {
+        array: Box<Column>,
+        offsets: Vec<Range<usize>>,
+    },
+    Nullable {
+        column: Box<Column>,
+        validity: Bitmap,
+    },
+    Tuple {
+        fields: Vec<Column>,
+        len: usize,
+    },
+}
+
+#[derive(Debug, Clone, EnumAsInner)]
+pub enum ColumnBuilder {
     Null {
         len: usize,
     },
@@ -58,33 +93,27 @@ pub enum Column {
     Int16(Vec<i16>),
     UInt8(Vec<u8>),
     UInt16(Vec<u16>),
-    Boolean(Vec<bool>),
+    Boolean(MutableBitmap),
     String(Vec<String>),
     Array {
-        array: Box<Column>,
+        array: Box<ColumnBuilder>,
         offsets: Vec<Range<usize>>,
     },
     Nullable {
-        column: Box<Column>,
-        nulls: Vec<bool>,
+        column: Box<ColumnBuilder>,
+        validity: MutableBitmap,
     },
     Tuple {
-        fields: Vec<Column>,
+        fields: Vec<ColumnBuilder>,
         len: usize,
     },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ColumnRef<'a> {
-    pub column: &'a Column,
-    pub range: Range<usize>,
 }
 
 impl<'a, T: ValueType> ValueRef<'a, T> {
     pub fn to_owned(self) -> Value<T> {
         match self {
             ValueRef::Scalar(scalar) => Value::Scalar(T::to_owned_scalar(scalar)),
-            ValueRef::Column(col) => Value::Column(T::to_owned_column(col)),
+            ValueRef::Column(col) => Value::Column(col),
         }
     }
 }
@@ -93,7 +122,7 @@ impl<'a, T: ValueType> Value<T> {
     pub fn as_ref(&'a self) -> ValueRef<'a, T> {
         match self {
             Value::Scalar(scalar) => ValueRef::Scalar(T::to_scalar_ref(scalar)),
-            Value::Column(col) => ValueRef::Column(T::to_column_ref(col)),
+            Value::Column(col) => ValueRef::Column(col.clone()),
         }
     }
 }
@@ -118,7 +147,7 @@ impl Scalar {
             Scalar::UInt16(i) => ScalarRef::UInt16(*i),
             Scalar::Boolean(b) => ScalarRef::Boolean(*b),
             Scalar::String(s) => ScalarRef::String(s.as_str()),
-            Scalar::Array(col) => ScalarRef::Array(col.slice_all()),
+            Scalar::Array(col) => ScalarRef::Array(col.clone()),
             Scalar::Tuple(fields) => ScalarRef::Tuple(fields.iter().map(Scalar::as_ref).collect()),
         }
     }
@@ -135,28 +164,29 @@ impl<'a> ScalarRef<'a> {
             ScalarRef::UInt16(i) => Scalar::UInt16(*i),
             ScalarRef::Boolean(b) => Scalar::Boolean(*b),
             ScalarRef::String(s) => Scalar::String(s.to_string()),
-            ScalarRef::Array(col) => Scalar::Array(col.to_owned()),
+            ScalarRef::Array(col) => Scalar::Array(col.clone()),
             ScalarRef::Tuple(fields) => {
                 Scalar::Tuple(fields.iter().map(ScalarRef::to_owned).collect())
             }
         }
     }
 
-    pub fn repeat(&self, n: usize) -> Column {
+    pub fn repeat(&self, n: usize) -> ColumnBuilder {
         match self {
-            ScalarRef::Null => Column::Null { len: n },
-            ScalarRef::EmptyArray => Column::EmptyArray { len: n },
-            ScalarRef::Int8(i) => Column::Int8(vec![*i; n]),
-            ScalarRef::Int16(i) => Column::Int16(vec![*i; n]),
-            ScalarRef::UInt8(i) => Column::UInt8(vec![*i; n]),
-            ScalarRef::UInt16(i) => Column::UInt16(vec![*i; n]),
-            ScalarRef::Boolean(b) => Column::Boolean(vec![*b; n]),
-            ScalarRef::String(s) => Column::String(vec![s.to_string(); n]),
-            ScalarRef::Array(col) => Column::Array {
-                array: Box::new(col.to_owned()),
+            ScalarRef::Null => ColumnBuilder::Null { len: n },
+            ScalarRef::EmptyArray => ColumnBuilder::EmptyArray { len: n },
+            ScalarRef::Int8(i) => ColumnBuilder::Int8(vec![*i; n]),
+            ScalarRef::Int16(i) => ColumnBuilder::Int16(vec![*i; n]),
+            ScalarRef::UInt8(i) => ColumnBuilder::UInt8(vec![*i; n]),
+            ScalarRef::UInt16(i) => ColumnBuilder::UInt16(vec![*i; n]),
+            ScalarRef::Boolean(b) => ColumnBuilder::Boolean(constant_bitmap(*b, n)),
+            ScalarRef::String(s) => ColumnBuilder::String(vec![s.to_string(); n]),
+            ScalarRef::Array(col) => ColumnBuilder::Array {
+                array: Box::new(ColumnBuilder::from_column(col.clone())),
+                // TODO: use arrow offsets
                 offsets: vec![0..col.len(); n],
             },
-            ScalarRef::Tuple(fields) => Column::Tuple {
+            ScalarRef::Tuple(fields) => ColumnBuilder::Tuple {
                 fields: fields.iter().map(|field| field.repeat(n)).collect(),
                 len: n,
             },
@@ -176,79 +206,205 @@ impl Column {
             Column::Boolean(col) => col.len(),
             Column::String(col) => col.len(),
             Column::Array { array: _, offsets } => offsets.len(),
-            Column::Nullable { column: _, nulls } => nulls.len(),
+            Column::Nullable {
+                column: _,
+                validity,
+            } => validity.len(),
             Column::Tuple { len, .. } => *len,
         }
     }
 
-    pub fn slice(&self, range: Range<usize>) -> ColumnRef {
-        ColumnRef {
-            column: self,
+    pub fn index(&self, index: usize) -> ScalarRef {
+        match self {
+            Column::Null { .. } => ScalarRef::Null,
+            Column::EmptyArray { .. } => ScalarRef::EmptyArray,
+            Column::Int8(col) => ScalarRef::Int8(col[index]),
+            Column::Int16(col) => ScalarRef::Int16(col[index]),
+            Column::UInt8(col) => ScalarRef::UInt8(col[index]),
+            Column::UInt16(col) => ScalarRef::UInt16(col[index]),
+            Column::Boolean(col) => ScalarRef::Boolean(col.get(index).unwrap()),
+            Column::String(col) => ScalarRef::String(&col[index]),
+            Column::Array { array, offsets } => {
+                ScalarRef::Array((*array).clone().slice(offsets[index].clone()))
+            }
+            Column::Nullable { column, validity } => {
+                if validity.get(index).unwrap() {
+                    column.index(index)
+                } else {
+                    ScalarRef::Null
+                }
+            }
+            Column::Tuple { fields, .. } => {
+                ScalarRef::Tuple(fields.iter().map(|field| field.index(index)).collect())
+            }
+        }
+    }
+
+    pub fn slice(&self, range: Range<usize>) -> Self {
+        assert!(
+            range.end <= self.len(),
+            "range {:?} out of len {}",
             range,
-        }
-    }
-
-    pub fn slice_all(&self) -> ColumnRef {
-        ColumnRef {
-            column: self,
-            range: 0..self.len(),
-        }
-    }
-
-    pub fn create_and_fill_default(ty: &DataType, len: usize) -> Column {
-        match ty {
-            DataType::Null => Column::Null { len },
-            DataType::EmptyArray => Column::EmptyArray { len },
-            DataType::Boolean => Column::Boolean(vec![false; len]),
-            DataType::String => Column::String(vec![String::new(); len]),
-            DataType::UInt8 => Column::UInt8(vec![0; len]),
-            DataType::UInt16 => Column::UInt16(vec![0; len]),
-            DataType::Int8 => Column::Int8(vec![0; len]),
-            DataType::Int16 => Column::Int16(vec![0; len]),
-            DataType::Nullable(ty) => Column::Nullable {
-                column: Box::new(Self::create_and_fill_default(ty, len)),
-                nulls: vec![false; len],
+            self.len()
+        );
+        match self {
+            Column::Null { .. } => Column::Null {
+                len: range.end - range.start,
             },
-            DataType::Array(ty) => Column::Array {
-                array: Box::new(Self::create_and_fill_default(ty, 0)),
-                offsets: vec![0..0; len],
+            Column::EmptyArray { .. } => Column::EmptyArray {
+                len: range.end - range.start,
             },
-            DataType::Tuple(fields) => Column::Tuple {
+            Column::Int8(col) => {
+                Column::Int8(col.clone().slice(range.start, range.end - range.start))
+            }
+            Column::Int16(col) => {
+                Column::Int16(col.clone().slice(range.start, range.end - range.start))
+            }
+            Column::UInt8(col) => {
+                Column::UInt8(col.clone().slice(range.start, range.end - range.start))
+            }
+            Column::UInt16(col) => {
+                Column::UInt16(col.clone().slice(range.start, range.end - range.start))
+            }
+            Column::Boolean(col) => {
+                Column::Boolean(col.clone().slice(range.start, range.end - range.start))
+            }
+            Column::String(col) => Column::String(col[range].to_vec()),
+            Column::Array { array, offsets } => {
+                let offsets = offsets[range.clone()].to_vec();
+                Column::Array {
+                    array: array.clone(),
+                    offsets,
+                }
+            }
+            Column::Nullable { column, validity } => {
+                let validity = validity.clone().slice(range.start, range.end - range.start);
+                Column::Nullable {
+                    column: Box::new(column.slice(range)),
+                    validity,
+                }
+            }
+            Column::Tuple { fields, .. } => Column::Tuple {
                 fields: fields
                     .iter()
-                    .map(|field| Self::create_and_fill_default(field, len))
+                    .map(|field| field.slice(range.clone()))
+                    .collect(),
+                len: range.end - range.start,
+            },
+        }
+    }
+
+    pub fn iter(&self) -> ColumnIterator {
+        ColumnIterator {
+            column: self,
+            index: 0,
+            len: self.len(),
+        }
+    }
+}
+
+impl ColumnBuilder {
+    pub fn from_column(col: Column) -> Self {
+        match col {
+            Column::Null { len } => ColumnBuilder::Null { len },
+            Column::EmptyArray { len } => ColumnBuilder::EmptyArray { len },
+            Column::Int8(col) => ColumnBuilder::Int8(col.to_vec()),
+            Column::Int16(col) => ColumnBuilder::Int16(col.to_vec()),
+            Column::UInt8(col) => ColumnBuilder::UInt8(col.to_vec()),
+            Column::UInt16(col) => ColumnBuilder::UInt16(col.to_vec()),
+            Column::Boolean(col) => ColumnBuilder::Boolean(bitmap_into_mut(col)),
+            Column::String(col) => ColumnBuilder::String(col.to_vec()),
+            Column::Array { array, offsets } => ColumnBuilder::Array {
+                array: Box::new(ColumnBuilder::from_column(*array)),
+                offsets,
+            },
+            Column::Nullable { column, validity } => ColumnBuilder::Nullable {
+                column: Box::new(ColumnBuilder::from_column(*column)),
+                validity: bitmap_into_mut(validity),
+            },
+            Column::Tuple { fields, len } => ColumnBuilder::Tuple {
+                fields: fields
+                    .iter()
+                    .map(|col| ColumnBuilder::from_column(col.clone()))
                     .collect(),
                 len,
+            },
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            ColumnBuilder::Null { len } => *len,
+            ColumnBuilder::EmptyArray { len } => *len,
+            ColumnBuilder::Int8(col) => col.len(),
+            ColumnBuilder::Int16(col) => col.len(),
+            ColumnBuilder::UInt8(col) => col.len(),
+            ColumnBuilder::UInt16(col) => col.len(),
+            ColumnBuilder::Boolean(col) => col.len(),
+            ColumnBuilder::String(col) => col.len(),
+            ColumnBuilder::Array { array: _, offsets } => offsets.len(),
+            ColumnBuilder::Nullable {
+                column: _,
+                validity,
+            } => validity.len(),
+            ColumnBuilder::Tuple { len, .. } => *len,
+        }
+    }
+
+    pub fn with_capacity(ty: &DataType, capacity: usize) -> ColumnBuilder {
+        match ty {
+            DataType::Null => ColumnBuilder::Null { len: 0 },
+            DataType::EmptyArray => ColumnBuilder::EmptyArray { len: 0 },
+            DataType::Boolean => ColumnBuilder::Boolean(MutableBitmap::with_capacity(capacity)),
+            DataType::String => ColumnBuilder::String(Vec::with_capacity(capacity)),
+            DataType::UInt8 => ColumnBuilder::UInt8(Vec::with_capacity(capacity)),
+            DataType::UInt16 => ColumnBuilder::UInt16(Vec::with_capacity(capacity)),
+            DataType::Int8 => ColumnBuilder::Int8(Vec::with_capacity(capacity)),
+            DataType::Int16 => ColumnBuilder::Int16(Vec::with_capacity(capacity)),
+            DataType::Nullable(ty) => ColumnBuilder::Nullable {
+                column: Box::new(Self::with_capacity(ty, capacity)),
+                validity: MutableBitmap::with_capacity(capacity),
+            },
+            DataType::Array(ty) => ColumnBuilder::Array {
+                array: Box::new(Self::with_capacity(ty, 0)),
+                offsets: Vec::with_capacity(capacity),
+            },
+            DataType::Tuple(fields) => ColumnBuilder::Tuple {
+                fields: fields
+                    .iter()
+                    .map(|field| Self::with_capacity(field, capacity))
+                    .collect(),
+                len: 0,
             },
             DataType::Generic(_) => unreachable!(),
         }
     }
 
-    pub fn push(&mut self, item: Scalar) {
+    pub fn push(&mut self, item: ScalarRef) {
         match (self, item) {
-            (Column::Null { len }, Scalar::Null) => *len += 1,
-            (Column::EmptyArray { len }, Scalar::EmptyArray) => *len += 1,
-            (Column::Int8(col), Scalar::Int8(value)) => col.push(value),
-            (Column::Int16(col), Scalar::Int16(value)) => col.push(value),
-            (Column::UInt8(col), Scalar::UInt8(value)) => col.push(value),
-            (Column::UInt16(col), Scalar::UInt16(value)) => col.push(value),
-            (Column::Boolean(col), Scalar::Boolean(value)) => col.push(value),
-            (Column::String(col), Scalar::String(value)) => col.push(value),
-            (Column::Array { array, offsets }, Scalar::Array(value)) => {
+            (ColumnBuilder::Null { len }, ScalarRef::Null) => *len += 1,
+            (ColumnBuilder::EmptyArray { len }, ScalarRef::EmptyArray) => *len += 1,
+            (ColumnBuilder::Int8(col), ScalarRef::Int8(value)) => col.push(value),
+            (ColumnBuilder::Int16(col), ScalarRef::Int16(value)) => col.push(value),
+            (ColumnBuilder::UInt8(col), ScalarRef::UInt8(value)) => col.push(value),
+            (ColumnBuilder::UInt16(col), ScalarRef::UInt16(value)) => col.push(value),
+            (ColumnBuilder::Boolean(col), ScalarRef::Boolean(value)) => col.push(value),
+            (ColumnBuilder::String(col), ScalarRef::String(value)) => col.push(value.to_string()),
+            (ColumnBuilder::Array { array, offsets }, ScalarRef::Array(value)) => {
                 let start = array.len();
                 let end = start + value.len();
                 offsets.push(start..end);
-                array.append(&value);
+                array.append(&ColumnBuilder::from_column(value));
             }
-            (Column::Nullable { column, nulls }, Scalar::Null) => {
+            (ColumnBuilder::Nullable { column, validity }, ScalarRef::Null) => {
                 column.push_default();
-                nulls.push(true);
+                validity.push(false);
             }
-            (Column::Nullable { column, nulls }, scalar) => {
+            (ColumnBuilder::Nullable { column, validity }, scalar) => {
                 column.push(scalar);
-                nulls.push(false);
+                validity.push(true);
             }
-            (Column::Tuple { fields, len }, Scalar::Tuple(value)) => {
+            (ColumnBuilder::Tuple { fields, len }, ScalarRef::Tuple(value)) => {
                 assert_eq!(fields.len(), value.len());
                 for (field, scalar) in fields.iter_mut().zip(value.iter()) {
                     field.push(scalar.clone());
@@ -261,23 +417,23 @@ impl Column {
 
     pub fn push_default(&mut self) {
         match self {
-            Column::Null { len } => *len += 1,
-            Column::EmptyArray { len } => *len += 1,
-            Column::Int8(col) => col.push(0),
-            Column::Int16(col) => col.push(0),
-            Column::UInt8(col) => col.push(0),
-            Column::UInt16(col) => col.push(0),
-            Column::Boolean(col) => col.push(false),
-            Column::String(col) => col.push(String::new()),
-            Column::Array { array, offsets } => {
+            ColumnBuilder::Null { len } => *len += 1,
+            ColumnBuilder::EmptyArray { len } => *len += 1,
+            ColumnBuilder::Int8(col) => col.push(0),
+            ColumnBuilder::Int16(col) => col.push(0),
+            ColumnBuilder::UInt8(col) => col.push(0),
+            ColumnBuilder::UInt16(col) => col.push(0),
+            ColumnBuilder::Boolean(col) => col.push(false),
+            ColumnBuilder::String(col) => col.push(String::new()),
+            ColumnBuilder::Array { array, offsets } => {
                 let start = array.len();
                 offsets.push(start..start);
             }
-            Column::Nullable { column, nulls } => {
+            ColumnBuilder::Nullable { column, validity } => {
                 column.push_default();
-                nulls.push(true);
+                validity.push(true);
             }
-            Column::Tuple { fields, len } => {
+            ColumnBuilder::Tuple { fields, len } => {
                 for field in fields {
                     field.push_default();
                 }
@@ -286,46 +442,60 @@ impl Column {
         }
     }
 
-    pub fn append(&mut self, other: &Column) {
+    pub fn append(&mut self, other: &ColumnBuilder) {
         match (self, other) {
-            (Column::Null { len }, Column::Null { len: other_len }) => *len += other_len,
-            (Column::EmptyArray { len }, Column::EmptyArray { len: other_len }) => {
-                *len += other_len
+            (ColumnBuilder::Null { len }, ColumnBuilder::Null { len: other_len }) => {
+                *len += other_len;
             }
-            (Column::Int8(col), Column::Int8(other_col)) => col.extend_from_slice(other_col),
-            (Column::Int16(col), Column::Int16(other_col)) => col.extend_from_slice(other_col),
-            (Column::UInt8(col), Column::UInt8(other_col)) => col.extend_from_slice(other_col),
-            (Column::UInt16(col), Column::UInt16(other_col)) => col.extend_from_slice(other_col),
-            (Column::Boolean(col), Column::Boolean(other_col)) => col.extend_from_slice(other_col),
-            (Column::String(col), Column::String(other_col)) => col.extend_from_slice(other_col),
+            (ColumnBuilder::EmptyArray { len }, ColumnBuilder::EmptyArray { len: other_len }) => {
+                *len += other_len;
+            }
+            (ColumnBuilder::Int8(builder), ColumnBuilder::Int8(other_builder)) => {
+                builder.extend_from_slice(other_builder);
+            }
+            (ColumnBuilder::Int16(builder), ColumnBuilder::Int16(other_builder)) => {
+                builder.extend_from_slice(other_builder);
+            }
+            (ColumnBuilder::UInt8(builder), ColumnBuilder::UInt8(other_builder)) => {
+                builder.extend_from_slice(other_builder);
+            }
+            (ColumnBuilder::UInt16(builder), ColumnBuilder::UInt16(other_builder)) => {
+                builder.extend_from_slice(other_builder);
+            }
+            (ColumnBuilder::Boolean(builder), ColumnBuilder::Boolean(other_builder)) => {
+                append_bitmap(builder, other_builder);
+            }
+            (ColumnBuilder::String(builder), ColumnBuilder::String(other_builder)) => {
+                builder.extend_from_slice(other_builder);
+            }
             (
-                Column::Array { array, offsets },
-                Column::Array {
+                ColumnBuilder::Array { array, offsets },
+                ColumnBuilder::Array {
                     array: other_array,
                     offsets: other_offsets,
                 },
             ) => {
+                array.append(other_array);
                 let base = offsets.last().map(|range| range.end).unwrap_or(0);
                 offsets.extend(
                     other_offsets
                         .iter()
                         .map(|range| (range.start + base)..(range.end + base)),
                 );
-                array.append(other_array);
             }
             (
-                Column::Nullable { column, nulls },
-                Column::Nullable {
+                ColumnBuilder::Nullable { column, validity },
+                ColumnBuilder::Nullable {
                     column: other_column,
-                    nulls: other_nulls,
+                    validity: other_validity,
                 },
             ) => {
                 column.append(other_column);
-                nulls.extend_from_slice(other_nulls);
+                append_bitmap(validity, other_validity);
             }
             (
-                Column::Tuple { fields, len },
-                Column::Tuple {
+                ColumnBuilder::Tuple { fields, len },
+                ColumnBuilder::Tuple {
                     fields: other_fields,
                     len: other_len,
                 },
@@ -339,165 +509,44 @@ impl Column {
             _ => unreachable!(),
         }
     }
-}
 
-impl<'a> ColumnRef<'a> {
-    pub fn index(&self, index: usize) -> ScalarRef<'a> {
-        if index >= self.range.end {
-            panic!(
-                "Column reference index {index} out of range 0..{}",
-                self.range.end
-            )
-        }
-        let index = self.range.start + index;
-        match self.column {
-            Column::Null { .. } => ScalarRef::Null,
-            Column::EmptyArray { .. } => ScalarRef::EmptyArray,
-            Column::Int8(values) => ScalarRef::Int8(values[index]),
-            Column::Int16(values) => ScalarRef::Int16(values[index]),
-            Column::UInt8(values) => ScalarRef::UInt8(values[index]),
-            Column::UInt16(values) => ScalarRef::UInt16(values[index]),
-            Column::Boolean(values) => ScalarRef::Boolean(values[index]),
-            Column::String(values) => ScalarRef::String(&values[index]),
-            Column::Array { array, offsets } => {
-                ScalarRef::Array(array.slice(offsets[index].clone()))
-            }
-            Column::Nullable { column: col, nulls } => {
-                if nulls.get(index).cloned().unwrap_or(false) {
-                    ScalarRef::Null
-                } else {
-                    col.slice_all().index(index)
-                }
-            }
-            Column::Tuple { fields, .. } => {
-                let fields = fields
-                    .iter()
-                    .map(|field| field.slice_all().index(index))
-                    .collect();
-                ScalarRef::Tuple(fields)
-            }
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        self.range.end - self.range.start
-    }
-
-    pub fn slice(&self, range: Range<usize>) -> ColumnRef<'a> {
-        if range.end > self.len() {
-            panic!(
-                "Column reference range {:?} out of range 0..{}",
-                range,
-                self.len()
-            )
-        } else {
-            ColumnRef {
-                column: self.column,
-                range: (self.range.start + range.start)..(self.range.start + range.end),
-            }
-        }
-    }
-
-    pub fn iter(&self) -> ColumnIterator<'a> {
-        ColumnIterator {
-            column: self.clone(),
-            index: 0,
-        }
-    }
-
-    pub fn to_owned(&self) -> Column {
-        match self.column {
-            Column::Null { len } => {
-                if self.range.end > *len {
-                    panic!(
-                        "Column index {end} out of range 0..{len}",
-                        end = self.range.end
-                    )
-                } else {
-                    Column::Null {
-                        len: self.range.end - self.range.start,
-                    }
-                }
-            }
-            Column::EmptyArray { len } => {
-                if self.range.end > *len {
-                    panic!(
-                        "Column index {end} out of range 0..{len}",
-                        end = self.range.end
-                    )
-                } else {
-                    Column::EmptyArray {
-                        len: self.range.end - self.range.start,
-                    }
-                }
-            }
-            Column::Int8(values) => Column::Int8(values[self.range.clone()].to_vec()),
-            Column::Int16(values) => Column::Int16(values[self.range.clone()].to_vec()),
-            Column::UInt8(values) => Column::UInt8(values[self.range.clone()].to_vec()),
-            Column::UInt16(values) => Column::UInt16(values[self.range.clone()].to_vec()),
-            Column::Boolean(values) => Column::Boolean(values[self.range.clone()].to_vec()),
-            Column::String(values) => Column::String(values[self.range.clone()].to_vec()),
-            Column::Array { array, offsets } => {
-                let start = offsets
-                    .get(self.range.start)
-                    .map(|range| range.start)
-                    .unwrap_or(0);
-                let end = self
-                    .range
-                    .end
-                    .checked_sub(1)
-                    .and_then(|end| offsets.get(end))
-                    .map(|range| range.end)
-                    .unwrap_or(0);
-                Column::Array {
-                    array: Box::new(array.slice(start..end).to_owned()),
-                    offsets: offsets[self.range.clone()]
-                        .iter()
-                        .map(|range| range.start - start..range.end - start)
-                        .collect(),
-                }
-            }
-            Column::Nullable { column, nulls } => Column::Nullable {
-                column: Box::new(column.slice(self.range.clone()).to_owned()),
-                nulls: nulls[self.range.clone()].to_vec(),
+    pub fn build(self) -> Column {
+        match self {
+            ColumnBuilder::Null { len } => Column::Null { len },
+            ColumnBuilder::EmptyArray { len } => Column::EmptyArray { len },
+            ColumnBuilder::Int8(builder) => Column::Int8(builder.into()),
+            ColumnBuilder::Int16(builder) => Column::Int16(builder.into()),
+            ColumnBuilder::UInt8(builder) => Column::UInt8(builder.into()),
+            ColumnBuilder::UInt16(builder) => Column::UInt16(builder.into()),
+            ColumnBuilder::Boolean(builder) => Column::Boolean(builder.into()),
+            ColumnBuilder::String(builder) => Column::String(builder),
+            ColumnBuilder::Array { array, offsets } => Column::Array {
+                array: Box::new(array.build()),
+                offsets,
             },
-            Column::Tuple { fields, len } => {
-                if self.range.end > *len {
-                    panic!(
-                        "Column index {end} out of range 0..{len}",
-                        end = self.range.end
-                    )
-                } else {
-                    let fields = fields
-                        .iter()
-                        .map(|field| field.slice(self.range.clone()).to_owned())
-                        .collect();
-                    Column::Tuple {
-                        fields,
-                        len: self.range.end - self.range.start,
-                    }
-                }
-            }
+            ColumnBuilder::Nullable { column, validity } => Column::Nullable {
+                column: Box::new(column.build()),
+                validity: validity.into(),
+            },
+            ColumnBuilder::Tuple { fields, len } => Column::Tuple {
+                fields: fields.into_iter().map(|field| field.build()).collect(),
+                len,
+            },
         }
-    }
-}
-
-impl Default for Column {
-    fn default() -> Self {
-        Column::Null { len: 0 }
     }
 }
 
 pub struct ColumnIterator<'a> {
-    column: ColumnRef<'a>,
+    column: &'a Column,
     index: usize,
+    len: usize,
 }
 
 impl<'a> Iterator for ColumnIterator<'a> {
     type Item = ScalarRef<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index < self.column.len() {
+        if self.index < self.len {
             let item = self.column.index(self.index);
             self.index += 1;
             Some(item)

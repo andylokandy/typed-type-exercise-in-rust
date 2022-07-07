@@ -3,8 +3,9 @@ use std::collections::HashMap;
 use crate::{
     expr::{Expr, Literal},
     types::{any::AnyType, DataType},
-    values::Value,
-    values::{Column, Scalar},
+    util::constant_bitmap,
+    values::{Column, Value},
+    values::{ColumnBuilder, Scalar},
 };
 
 pub struct Runtime {
@@ -44,7 +45,7 @@ impl Runtime {
             Value::Scalar(scalar) => match (scalar, dest_type) {
                 (Scalar::Null, DataType::Nullable(_)) => Some(Value::Scalar(Scalar::Null)),
                 (Scalar::EmptyArray, DataType::Array(dest_ty)) => {
-                    let column = Column::create_and_fill_default(dest_ty, 0);
+                    let column = ColumnBuilder::with_capacity(dest_ty, 0).build();
                     Some(Value::Scalar(Scalar::Array(column)))
                 }
                 (scalar, DataType::Nullable(dest_ty)) => {
@@ -81,18 +82,17 @@ impl Runtime {
             Value::Column(col) => match (col, dest_type) {
                 (Column::Null { len }, DataType::Nullable(dest_ty)) => {
                     Some(Value::Column(Column::Nullable {
-                        column: Box::new(Column::create_and_fill_default(dest_ty, len)),
-                        nulls: vec![false; len],
+                        column: Box::new(ColumnBuilder::with_capacity(dest_ty, len).build()),
+                        validity: constant_bitmap(false, len).into(),
                     }))
                 }
                 (Column::EmptyArray { len }, DataType::Array(dest_ty)) => {
-                    let array = Box::new(Column::create_and_fill_default(dest_ty, 0));
                     Some(Value::Column(Column::Array {
-                        array,
+                        array: Box::new(ColumnBuilder::with_capacity(dest_ty, 0).build()),
                         offsets: vec![0..0; len],
                     }))
                 }
-                (Column::Nullable { column, nulls }, DataType::Nullable(dest_ty)) => {
+                (Column::Nullable { column, validity }, DataType::Nullable(dest_ty)) => {
                     let column = self
                         .run_cast(Value::Column(*column), &*dest_ty)?
                         .into_column()
@@ -100,7 +100,7 @@ impl Runtime {
                         .unwrap();
                     Some(Value::Column(Column::Nullable {
                         column: Box::new(column),
-                        nulls,
+                        validity,
                     }))
                 }
                 (col, DataType::Nullable(dest_ty)) => {
@@ -110,7 +110,7 @@ impl Runtime {
                         .ok()
                         .unwrap();
                     Some(Value::Column(Column::Nullable {
-                        nulls: vec![false; column.len()],
+                        validity: constant_bitmap(true, column.len()).into(),
                         column: Box::new(column),
                     }))
                 }

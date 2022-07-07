@@ -1,5 +1,7 @@
 use std::ops::Range;
 
+use arrow2::buffer::Buffer;
+
 use crate::values::{Column, Scalar};
 
 use super::{ArgType, DataType, GenericMap, ValueType};
@@ -9,28 +11,20 @@ pub struct Int16Type;
 impl ValueType for Int16Type {
     type Scalar = i16;
     type ScalarRef<'a> = i16;
-    type Column = Vec<i16>;
-    type ColumnRef<'a> = &'a [i16];
+    type Column = Buffer<i16>;
 
     fn to_owned_scalar<'a>(scalar: Self::ScalarRef<'a>) -> Self::Scalar {
         scalar
     }
 
-    fn to_owned_column<'a>(col: Self::ColumnRef<'a>) -> Self::Column {
-        col.to_vec()
-    }
-
     fn to_scalar_ref<'a>(scalar: &'a Self::Scalar) -> Self::ScalarRef<'a> {
         *scalar
-    }
-
-    fn to_column_ref<'a>(col: &'a Self::Column) -> Self::ColumnRef<'a> {
-        col
     }
 }
 
 impl ArgType for Int16Type {
     type ColumnIterator<'a> = std::iter::Cloned<std::slice::Iter<'a, i16>>;
+    type ColumnBuilder = Vec<i16>;
 
     fn data_type() -> DataType {
         DataType::Int16
@@ -43,9 +37,9 @@ impl ArgType for Int16Type {
         }
     }
 
-    fn try_downcast_column<'a>(col: &'a Column) -> Option<Self::ColumnRef<'a>> {
+    fn try_downcast_column<'a>(col: &'a Column) -> Option<Self::Column> {
         match col {
-            Column::Int16(column) => Some(column),
+            Column::Int16(column) => Some(column.clone()),
             _ => None,
         }
     }
@@ -58,37 +52,57 @@ impl ArgType for Int16Type {
         Column::Int16(col)
     }
 
-    fn column_len<'a>(col: Self::ColumnRef<'a>) -> usize {
+    fn column_len<'a>(col: &'a Self::Column) -> usize {
         col.len()
     }
 
-    fn index_column<'a>(col: Self::ColumnRef<'a>, index: usize) -> Self::ScalarRef<'a> {
+    fn index_column<'a>(col: &'a Self::Column, index: usize) -> Self::ScalarRef<'a> {
         col[index]
     }
 
-    fn slice_column<'a>(col: Self::ColumnRef<'a>, range: Range<usize>) -> Self::ColumnRef<'a> {
-        &col[range]
+    fn slice_column<'a>(col: &'a Self::Column, range: Range<usize>) -> Self::Column {
+        col.clone().slice(range.start, range.end - range.start)
     }
 
-    fn iter_column<'a>(col: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a> {
+    fn iter_column<'a>(col: &'a Self::Column) -> Self::ColumnIterator<'a> {
         col.iter().cloned()
-    }
-
-    fn create_column(capacity: usize, _: &GenericMap) -> Self::Column {
-        Vec::with_capacity(capacity)
-    }
-
-    fn push_column(mut col: Self::Column, item: Self::Scalar) -> Self::Column {
-        col.push(item);
-        col
-    }
-
-    fn append_column(mut col: Self::Column, mut other: Self::Column) -> Self::Column {
-        col.append(&mut other);
-        col
     }
 
     fn column_from_iter(iter: impl Iterator<Item = Self::Scalar>, _: &GenericMap) -> Self::Column {
         iter.collect()
+    }
+
+    fn create_builer(capacity: usize, _generics: &GenericMap) -> Self::ColumnBuilder {
+        Vec::with_capacity(capacity)
+    }
+
+    fn column_to_builder(col: Self::Column) -> Self::ColumnBuilder {
+        col.to_vec()
+    }
+
+    fn builder_len(builder: &Self::ColumnBuilder) -> usize {
+        builder.len()
+    }
+
+    fn push_item(mut builder: Self::ColumnBuilder, item: Self::Scalar) -> Self::ColumnBuilder {
+        builder.push(item);
+        builder
+    }
+
+    fn push_default(mut builder: Self::ColumnBuilder) -> Self::ColumnBuilder {
+        builder.push(0);
+        builder
+    }
+
+    fn append_builder(
+        mut builder: Self::ColumnBuilder,
+        mut other_builder: Self::ColumnBuilder,
+    ) -> Self::ColumnBuilder {
+        builder.append(&mut other_builder);
+        builder
+    }
+
+    fn build_column(builder: Self::ColumnBuilder) -> Self::Column {
+        builder.into()
     }
 }

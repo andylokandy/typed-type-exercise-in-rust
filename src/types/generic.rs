@@ -1,11 +1,8 @@
 use std::ops::Range;
 
-use crate::values::{Column, ColumnIterator, ColumnRef, Scalar, ScalarRef};
+use crate::values::{Column, ColumnBuilder, ColumnIterator, Scalar, ScalarRef};
 
-use super::{
-    array::ArrayType, boolean::BooleanType, nullable::NullableType, ArgType, DataType, GenericMap,
-    Int16Type, ValueType,
-};
+use super::{ArgType, DataType, GenericMap, ValueType};
 
 pub struct GenericType<const INDEX: usize>;
 
@@ -13,27 +10,19 @@ impl<const INDEX: usize> ValueType for GenericType<INDEX> {
     type Scalar = Scalar;
     type ScalarRef<'a> = ScalarRef<'a>;
     type Column = Column;
-    type ColumnRef<'a> = ColumnRef<'a>;
 
     fn to_owned_scalar<'a>(scalar: Self::ScalarRef<'a>) -> Self::Scalar {
         scalar.to_owned()
     }
 
-    fn to_owned_column<'a>(col: Self::ColumnRef<'a>) -> Self::Column {
-        col.to_owned()
-    }
-
     fn to_scalar_ref<'a>(scalar: &'a Self::Scalar) -> Self::ScalarRef<'a> {
         scalar.as_ref()
-    }
-
-    fn to_column_ref<'a>(col: &'a Self::Column) -> Self::ColumnRef<'a> {
-        col.slice_all()
     }
 }
 
 impl<const INDEX: usize> ArgType for GenericType<INDEX> {
     type ColumnIterator<'a> = ColumnIterator<'a>;
+    type ColumnBuilder = ColumnBuilder;
 
     fn data_type() -> DataType {
         DataType::Generic(INDEX)
@@ -43,8 +32,8 @@ impl<const INDEX: usize> ArgType for GenericType<INDEX> {
         Some(scalar.as_ref())
     }
 
-    fn try_downcast_column<'a>(col: &'a Column) -> Option<Self::ColumnRef<'a>> {
-        Some(col.slice_all())
+    fn try_downcast_column<'a>(col: &'a Column) -> Option<Self::Column> {
+        Some(col.clone())
     }
 
     fn upcast_scalar(scalar: Self::Scalar) -> Scalar {
@@ -55,49 +44,56 @@ impl<const INDEX: usize> ArgType for GenericType<INDEX> {
         col
     }
 
-    fn column_len<'a>(col: Self::ColumnRef<'a>) -> usize {
+    fn column_len<'a>(col: &'a Self::Column) -> usize {
         col.len()
     }
 
-    fn index_column<'a>(col: Self::ColumnRef<'a>, index: usize) -> Self::ScalarRef<'a> {
+    fn index_column<'a>(col: &'a Self::Column, index: usize) -> Self::ScalarRef<'a> {
         col.index(index)
     }
 
-    fn slice_column<'a>(col: Self::ColumnRef<'a>, range: Range<usize>) -> Self::ColumnRef<'a> {
+    fn slice_column<'a>(col: &'a Self::Column, range: Range<usize>) -> Self::Column {
         col.slice(range)
     }
 
-    fn iter_column<'a>(col: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a> {
+    fn iter_column<'a>(col: &'a Self::Column) -> Self::ColumnIterator<'a> {
         col.iter()
     }
 
-    fn create_column(capacity: usize, generics: &GenericMap) -> Self::Column {
-        match &generics[INDEX] {
-            DataType::Boolean => {
-                BooleanType::upcast_column(BooleanType::create_column(capacity, generics))
-            }
-            DataType::Int16 => {
-                Int16Type::upcast_column(Int16Type::create_column(capacity, generics))
-            }
-            DataType::Nullable(box ty) => NullableType::<GenericType<0>>::upcast_column(
-                NullableType::<GenericType<0>>::create_column(capacity, &[ty.clone()]),
-            ),
-            DataType::Array(box ty) => {
-                ArrayType::<GenericType<0>>::upcast_column(
-                    ArrayType::<GenericType<0>>::create_column(capacity, &[ty.clone()]),
-                )
-            }
-            ty => todo!("{ty}"),
-        }
+    fn create_builer(capacity: usize, generics: &GenericMap) -> Self::ColumnBuilder {
+        ColumnBuilder::with_capacity(&generics[INDEX], capacity)
     }
 
-    fn push_column(mut col: Self::Column, item: Self::Scalar) -> Self::Column {
-        col.push(item);
-        col
+    fn column_to_builder(col: Self::Column) -> Self::ColumnBuilder {
+        ColumnBuilder::from_column(col)
     }
 
-    fn append_column(mut col: Self::Column, other: Self::Column) -> Self::Column {
-        col.append(&other);
-        col
+    fn builder_len(builder: &Self::ColumnBuilder) -> usize {
+        builder.len()
+    }
+
+    fn push_item(
+        mut builder: Self::ColumnBuilder,
+        item: Self::ScalarRef<'_>,
+    ) -> Self::ColumnBuilder {
+        builder.push(item);
+        builder
+    }
+
+    fn push_default(mut builder: Self::ColumnBuilder) -> Self::ColumnBuilder {
+        builder.push_default();
+        builder
+    }
+
+    fn append_builder(
+        mut builder: Self::ColumnBuilder,
+        other: Self::ColumnBuilder,
+    ) -> Self::ColumnBuilder {
+        builder.append(&other);
+        builder
+    }
+
+    fn build_column(builder: Self::ColumnBuilder) -> Self::Column {
+        builder.build()
     }
 }

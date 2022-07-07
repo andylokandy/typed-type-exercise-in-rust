@@ -139,8 +139,6 @@ impl FunctionRegistry {
         property: FunctionProperty,
         func: F,
     ) where
-        I1::Scalar: Default,
-        O::Scalar: Default,
         F: for<'a> Fn(I1::ScalarRef<'a>) -> O::Scalar + 'static + Clone + Copy,
     {
         let has_nullable = &[I1::data_type(), O::data_type()]
@@ -198,9 +196,6 @@ impl FunctionRegistry {
         property: FunctionProperty,
         func: F,
     ) where
-        I1::Scalar: Default,
-        I2::Scalar: Default,
-        O::Scalar: Default,
         F: for<'a, 'b> Fn(I1::ScalarRef<'a>, I2::ScalarRef<'b>) -> O::Scalar
             + Sized
             + 'static
@@ -343,7 +338,7 @@ pub fn vectorize_1_arg<'a, I1: ArgType, O: ArgType>(
     match val {
         ValueRef::Scalar(val) => Value::Scalar(func(val)),
         ValueRef::Column(col) => {
-            let iter = I1::iter_column(col).map(func);
+            let iter = I1::iter_column(&col).map(func);
             let col = O::column_from_iter(iter, generics);
             Value::Column(col)
         }
@@ -359,18 +354,18 @@ pub fn vectorize_2_arg<'a, 'b, I1: ArgType, I2: ArgType, O: ArgType>(
     match (lhs, rhs) {
         (ValueRef::Scalar(lhs), ValueRef::Scalar(rhs)) => Value::Scalar(func(lhs, rhs)),
         (ValueRef::Scalar(lhs), ValueRef::Column(rhs)) => {
-            let iter = I2::iter_column(rhs).map(|rhs| func(lhs.clone(), rhs));
+            let iter = I2::iter_column(&rhs).map(|rhs| func(lhs.clone(), rhs));
             let col = O::column_from_iter(iter, generics);
             Value::Column(col)
         }
         (ValueRef::Column(lhs), ValueRef::Scalar(rhs)) => {
-            let iter = I1::iter_column(lhs).map(|lhs| func(lhs, rhs.clone()));
+            let iter = I1::iter_column(&lhs).map(|lhs| func(lhs, rhs.clone()));
             let col = O::column_from_iter(iter, generics);
             Value::Column(col)
         }
         (ValueRef::Column(lhs), ValueRef::Column(rhs)) => {
-            let iter = I1::iter_column(lhs)
-                .zip(I2::iter_column(rhs))
+            let iter = I1::iter_column(&lhs)
+                .zip(I2::iter_column(&rhs))
                 .map(|(lhs, rhs)| func(lhs, rhs));
             let col = O::column_from_iter(iter, generics);
             Value::Column(col)
@@ -382,18 +377,14 @@ pub fn vectorize_passthrough_nullable_1_arg<'a, I1: ArgType, O: ArgType>(
     val: ValueRef<'a, NullableType<I1>>,
     generics: &GenericMap,
     func: impl for<'for_a> Fn(I1::ScalarRef<'for_a>) -> O::Scalar,
-) -> Value<NullableType<O>>
-where
-    I1::Scalar: Default,
-    O::Scalar: Default,
-{
+) -> Value<NullableType<O>> {
     match val {
         ValueRef::Scalar(None) => Value::Scalar(None),
         ValueRef::Scalar(Some(val)) => Value::Scalar(Some(func(val))),
-        ValueRef::Column((col, nulls)) => {
-            let iter = I1::iter_column(col).map(func);
+        ValueRef::Column((col, validity)) => {
+            let iter = I1::iter_column(&col).map(func);
             let col = O::column_from_iter(iter, generics);
-            Value::Column((col, nulls.to_vec()))
+            Value::Column((col, validity))
         }
     }
 }
@@ -403,39 +394,29 @@ pub fn vectorize_passthrough_nullable_2_arg<'a, 'b, I1: ArgType, I2: ArgType, O:
     rhs: ValueRef<'b, NullableType<I2>>,
     generics: &GenericMap,
     func: impl for<'for_a, 'for_b> Fn(I1::ScalarRef<'for_a>, I2::ScalarRef<'for_b>) -> O::Scalar,
-) -> Value<NullableType<O>>
-where
-    I1::Scalar: Default,
-    I2::Scalar: Default,
-    O::Scalar: Default,
-{
+) -> Value<NullableType<O>> {
     match (lhs, rhs) {
         (ValueRef::Scalar(None), _) | (_, ValueRef::Scalar(None)) => Value::Scalar(None),
         (ValueRef::Scalar(Some(lhs)), ValueRef::Scalar(Some(rhs))) => {
             Value::Scalar(Some(func(lhs, rhs)))
         }
-        (ValueRef::Scalar(Some(lhs)), ValueRef::Column((rhs, rhs_nulls))) => {
-            let iter = I2::iter_column(rhs).map(|rhs| func(lhs.clone(), rhs));
+        (ValueRef::Scalar(Some(lhs)), ValueRef::Column((rhs, rhs_validity))) => {
+            let iter = I2::iter_column(&rhs).map(|rhs| func(lhs.clone(), rhs));
             let col = O::column_from_iter(iter, generics);
-            Value::Column((col, rhs_nulls.to_vec()))
+            Value::Column((col, rhs_validity))
         }
-        (ValueRef::Column((lhs, lhs_nulls)), ValueRef::Scalar(Some(rhs))) => {
-            let iter = I1::iter_column(lhs).map(|lhs| func(lhs, rhs.clone()));
+        (ValueRef::Column((lhs, lhs_validity)), ValueRef::Scalar(Some(rhs))) => {
+            let iter = I1::iter_column(&lhs).map(|lhs| func(lhs, rhs.clone()));
             let col = O::column_from_iter(iter, generics);
-            Value::Column((col, lhs_nulls.to_vec()))
+            Value::Column((col, lhs_validity))
         }
-        (ValueRef::Column((lhs, lhs_nulls)), ValueRef::Column((rhs, rhs_nulls))) => {
-            let iter = I1::iter_column(lhs)
-                .zip(I2::iter_column(rhs))
+        (ValueRef::Column((lhs, lhs_validity)), ValueRef::Column((rhs, rhs_validity))) => {
+            let iter = I1::iter_column(&lhs)
+                .zip(I2::iter_column(&rhs))
                 .map(|(lhs, rhs)| func(lhs, rhs));
             let col = O::column_from_iter(iter, generics);
-
-            let nulls = lhs_nulls
-                .iter()
-                .zip(rhs_nulls)
-                .map(|(lhs, rhs)| *lhs || *rhs)
-                .collect();
-            Value::Column((col, nulls))
+            let validity = arrow2::bitmap::or(&lhs_validity, &rhs_validity);
+            Value::Column((col, validity))
         }
     }
 }

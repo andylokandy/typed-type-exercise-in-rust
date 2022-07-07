@@ -10,27 +10,19 @@ impl ValueType for NullType {
     type Scalar = ();
     type ScalarRef<'a> = ();
     type Column = usize;
-    type ColumnRef<'a> = usize;
 
     fn to_owned_scalar<'a>(scalar: Self::ScalarRef<'a>) -> Self::Scalar {
         scalar
     }
 
-    fn to_owned_column<'a>(len: Self::ColumnRef<'a>) -> Self::Column {
-        len
-    }
-
     fn to_scalar_ref<'a>(scalar: &'a Self::Scalar) -> Self::ScalarRef<'a> {
         *scalar
-    }
-
-    fn to_column_ref<'a>(len: &'a Self::Column) -> Self::ColumnRef<'a> {
-        *len
     }
 }
 
 impl ArgType for NullType {
     type ColumnIterator<'a> = std::iter::Take<std::iter::Repeat<()>>;
+    type ColumnBuilder = usize;
 
     fn data_type() -> DataType {
         DataType::Null
@@ -43,7 +35,7 @@ impl ArgType for NullType {
         }
     }
 
-    fn try_downcast_column<'a>(col: &'a Column) -> Option<Self::ColumnRef<'a>> {
+    fn try_downcast_column<'a>(col: &'a Column) -> Option<Self::Column> {
         match col {
             Column::Null { len } => Some(*len),
             _ => None,
@@ -58,41 +50,60 @@ impl ArgType for NullType {
         Column::Null { len }
     }
 
-    fn column_len<'a>(len: Self::ColumnRef<'a>) -> usize {
-        len
+    fn column_len<'a>(len: &'a Self::Column) -> usize {
+        *len
     }
 
-    fn index_column<'a>(len: Self::ColumnRef<'a>, index: usize) -> Self::ScalarRef<'a> {
-        if index >= len {
+    fn index_column<'a>(len: &'a Self::Column, index: usize) -> Self::ScalarRef<'a> {
+        if index >= *len {
             panic!("index {index} out of 0..{len}");
         }
     }
 
-    fn slice_column<'a>(len: Self::ColumnRef<'a>, range: Range<usize>) -> Self::ColumnRef<'a> {
-        if range.start < len && range.end <= len {
+    fn slice_column<'a>(len: &'a Self::Column, range: Range<usize>) -> Self::Column {
+        if range.end <= *len {
             range.end - range.start
         } else {
             panic!("range {range:?} out of 0..{len}");
         }
     }
 
-    fn iter_column<'a>(len: Self::ColumnRef<'a>) -> Self::ColumnIterator<'a> {
-        std::iter::repeat(()).take(len)
-    }
-
-    fn create_column(_capacity: usize, _: &GenericMap) -> Self::Column {
-        0
-    }
-
-    fn push_column(len: Self::Column, _: Self::Scalar) -> Self::Column {
-        len + 1
-    }
-
-    fn append_column(len: Self::Column, other_len: Self::Column) -> Self::Column {
-        len + other_len
+    fn iter_column<'a>(len: &'a Self::Column) -> Self::ColumnIterator<'a> {
+        std::iter::repeat(()).take(*len)
     }
 
     fn column_from_iter(iter: impl Iterator<Item = Self::Scalar>, _: &GenericMap) -> Self::Column {
         iter.count()
+    }
+
+    fn create_builer(_capacity: usize, _generics: &GenericMap) -> Self::ColumnBuilder {
+        0
+    }
+
+    fn column_to_builder(len: Self::Column) -> Self::ColumnBuilder {
+        len
+    }
+
+    fn builder_len(len: &Self::ColumnBuilder) -> usize {
+        *len
+    }
+
+    fn push_item(len: Self::ColumnBuilder, _item: Self::Scalar) -> Self::ColumnBuilder {
+        len + 1
+    }
+
+    fn push_default(len: Self::ColumnBuilder) -> Self::ColumnBuilder {
+        len + 1
+    }
+
+    fn append_builder(
+        len: Self::ColumnBuilder,
+        other_len: Self::ColumnBuilder,
+    ) -> Self::ColumnBuilder {
+        len + other_len
+    }
+
+    fn build_column(len: Self::ColumnBuilder) -> Self::Column {
+        len
     }
 }
