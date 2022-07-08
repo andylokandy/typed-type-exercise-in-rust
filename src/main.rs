@@ -17,7 +17,7 @@ use crate::property::{FunctionProperty, ValueProperty};
 use crate::runtime::Runtime;
 use crate::types::DataType;
 use crate::types::*;
-use crate::types::{ArgType, ArrayType, Int16Type};
+use crate::types::{ArgType, ArrayType};
 use crate::values::{Column, ColumnBuilder, ValueRef};
 use crate::values::{Scalar, Value};
 
@@ -434,7 +434,7 @@ fn builtin_functions() -> FunctionRegistry {
         |lhs, rhs| lhs && rhs,
     );
 
-    registry.register_2_arg::<Int16Type, Int16Type, Int16Type, _>(
+    registry.register_2_arg::<NumberType<i16>, NumberType<i16>, NumberType<i16>, _>(
         "plus",
         FunctionProperty::default(),
         |lhs, rhs| lhs + rhs,
@@ -460,21 +460,21 @@ fn builtin_functions() -> FunctionRegistry {
                 } else if args.len() == 1 {
                     args[0].clone().to_owned()
                 } else {
-                    let mut min: Value<Int16Type> = vectorize_2_arg(
-                        Int16Type::try_downcast_value(&args[0]).unwrap(),
-                        Int16Type::try_downcast_value(&args[1]).unwrap(),
+                    let mut min: Value<NumberType<i16>> = vectorize_2_arg(
+                        NumberType::<i16>::try_downcast_value(&args[0]).unwrap(),
+                        NumberType::<i16>::try_downcast_value(&args[1]).unwrap(),
                         generics,
                         |lhs, rhs| lhs.min(rhs),
                     );
                     for arg in &args[2..] {
                         min = vectorize_2_arg(
                             min.as_ref(),
-                            Int16Type::try_downcast_value(arg).unwrap(),
+                            NumberType::<i16>::try_downcast_value(arg).unwrap(),
                             generics,
                             |lhs, rhs| lhs.min(rhs),
                         );
                     }
-                    Int16Type::upcast_value(min)
+                    NumberType::<i16>::upcast_value(min)
                 }
             }),
         }))
@@ -537,7 +537,7 @@ fn builtin_functions() -> FunctionRegistry {
         }))
     });
 
-    registry.register_with_writer_2_arg::<ArrayType<GenericType<0>>, Int16Type, GenericType<0>, _>(
+    registry.register_with_writer_2_arg::<ArrayType<GenericType<0>>, NumberType<i16>, GenericType<0>, _>(
         "get",
         FunctionProperty::default(),
         |array, idx, output| output.push(array.index(idx as usize)),
