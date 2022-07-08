@@ -3,9 +3,10 @@ pub mod array;
 pub mod boolean;
 pub mod empty_array;
 pub mod generic;
-pub mod int16;
 pub mod null;
 pub mod nullable;
+pub mod number;
+pub mod string;
 
 pub use any::AnyType;
 pub use array::ArrayType;
@@ -13,9 +14,10 @@ use arrow2::trusted_len::TrustedLen;
 pub use boolean::BooleanType;
 pub use empty_array::EmptyArrayType;
 pub use generic::GenericType;
-pub use int16::Int16Type;
 pub use null::NullType;
 pub use nullable::NullableType;
+pub use number::NumberType;
+pub use string::StringType;
 
 use std::{fmt::Debug, ops::Range};
 
